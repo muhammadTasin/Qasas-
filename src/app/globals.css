@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #201a17;
+  --ink-muted: #564740;
+  --paper: #f8f1e7;
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-stroke: rgba(255, 255, 255, 0.25);
+  --accent: #bd6a4c;
+  --accent-2: #2d6a6f;
+  --shadow: rgba(16, 12, 10, 0.12);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(189, 106, 76, 0.2), transparent 60%),
+    radial-gradient(800px 500px at 90% 10%, rgba(45, 106, 111, 0.18), transparent 55%),
+    linear-gradient(180deg, #fbf6ee 0%, #f3e9dc 100%);
+  color: var(--ink);
+  font-family: var(--font-body), "Source Sans 3", sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), "Fraunces", serif;
+  letter-spacing: 0.02em;
+}
+
+a {
+  color: inherit;
+}
+
+main {
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: 0 10px 30px var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.reading {
+  max-width: 65ch;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.reading p + p {
+  margin-top: 1.25rem;
+}
+
+.text-muted {
+  color: var(--ink-muted);
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  main {
+    padding: 2rem 1rem 3rem;
+  }
+
+  .reading {
+    font-size: 17px;
+  }
 }

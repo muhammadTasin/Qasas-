@@ -1,0 +1,124 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["public", "auth"]
+}
+
+enum ReactionType {
+  LOVE
+  SORROW
+  ANGRY
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  stories      Story[]
+  reactions    Reaction[]
+  comments     Comment[]
+}
+
+model Story {
+  id               String      @id @default(cuid())
+  authorId         String
+  title            String
+  content          String
+  totalReadSeconds Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  author           User        @relation(fields: [authorId], references: [id])
+  reactions        Reaction[]
+  comments         Comment[]
+  views            StoryView[]
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Reaction {
+  id        String       @id @default(cuid())
+  storyId   String
+  userId    String
+  type      ReactionType
+  createdAt DateTime     @default(now())
+  story     Story        @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@unique([storyId, userId])
+  @@index([storyId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  storyId   String
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([storyId])
+  @@index([createdAt])
+}
+
+model StoryView {
+  id               String   @id @default(cuid())
+  storyId          String
+  visitorId        String?
+  ipHash           String?
+  userAgent        String?
+  deviceType       String?
+  os               String?
+  browser          String?
+  country          String?
+  region           String?
+  city             String?
+  firstSeenAt      DateTime @default(now())
+  lastSeenAt       DateTime @updatedAt
+  totalReadSeconds Int      @default(0)
+  story            Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, visitorId])
+  @@unique([storyId, ipHash])
+  @@index([storyId])
+  @@index([lastSeenAt])
+}
+
+model SiteVisitor {
+  id          String   @id @default(cuid())
+  visitorId   String?
+  ipHash      String?
+  userAgent   String?
+  deviceType  String?
+  os          String?
+  browser     String?
+  country     String?
+  region      String?
+  city        String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  @@unique([visitorId])
+  @@unique([ipHash])
+  @@index([lastSeenAt])
+  @@index([firstSeenAt])
+}
+
+model SiteVisitEvent {
+  id         String   @id @default(cuid())
+  visitorId  String?
+  ipHash     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
