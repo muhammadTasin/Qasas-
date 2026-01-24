@@ -1,12 +1,17 @@
-Qasas is a storytelling website where anyone can share stories and read stories from others. The name is inspired by Surah Al-Qasas in the Qur'an, which means "The Stories." I chose it because the word relates to narrating events and storytelling.
+# Qasas
+
+Qasas is a storytelling website where anyone can share stories and read stories from others.
+The name is inspired by *Surah Al-Qasas* in the Qur’an, which means **“The Stories.”**
+I chose it because the word relates to narrating events and storytelling.
 
 ## Why I Built This
-I wanted a simple, focused place for people to tell their stories. Qasas is meant to make sharing easy, encourage reading, and highlight how much time it takes to read each story.
+I wanted a simple, focused place for people to tell their stories. Qasas is meant to make
+sharing easy, encourage reading, and highlight how much time it takes to read each story.
 
 ## Features
 - Share your own stories
 - Read stories from others
-- See total read time for each story
+- See the estimated read time for each story
 
 ## Tech Stack
 - Next.js (App Router)
@@ -21,21 +26,15 @@ I wanted a simple, focused place for people to tell their stories. Qasas is mean
 - Reader profiles and bookmarks
 
 ## Getting Started
+
 Run the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open http://localhost:3000 with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit.
 
 ## Prisma Migrations (Supabase)
 If you see a cross-schema error from Supabase (`public.profiles` referencing `auth.users`), drop the default `profiles` table and retry the migration:
