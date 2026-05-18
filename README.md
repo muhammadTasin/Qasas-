@@ -144,6 +144,6 @@ npx prisma migrate dev
 
 ---
 
-## License
 
-MIT License. See LICENSE file for details.
+
+
