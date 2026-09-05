@@ -1,13 +1,8 @@
 import StoryCard from "@/components/StoryCard";
-import { prisma } from "@/lib/prisma";
-
-export const dynamic = "force-dynamic";
+import { getHomeStories } from "@/lib/story-data";
 
 export default async function HomePage() {
-  const stories = await prisma.story.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { author: true },
-  });
+  const stories = await getHomeStories();
 
   return (
     <div className="space-y-8">

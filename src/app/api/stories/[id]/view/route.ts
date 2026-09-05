@@ -1,64 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { getGeoFromHeaders, getUaInfo, getVisitorIdentity } from "@/lib/analytics";
+import { recordStoryActivity } from "@/lib/tracking";
+import { activitySchema, readTrackingBody, trackingContext, trackingError } from "@/lib/tracking-request";
 
-const paramsSchema = z.object({
-  id: z.string().min(1),
-});
-
-export async function POST(request: Request, context: { params: { id: string } }) {
-  const parsed = paramsSchema.safeParse(context.params);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid story id" }, { status: 400 });
-  }
-
-  const storyId = parsed.data.id;
-  const story = await prisma.story.findUnique({ where: { id: storyId } });
-  if (!story) {
-    return NextResponse.json({ error: "Story not found" }, { status: 404 });
-  }
-  const headers = request.headers;
-  const { visitorId, ipHash } = getVisitorIdentity(headers);
-  const geo = getGeoFromHeaders(headers);
-  const ua = getUaInfo(headers);
-
-  if (!visitorId && !ipHash) {
-    return NextResponse.json({ ok: true });
-  }
-
-  if (visitorId) {
-    await prisma.storyView.upsert({
-      where: { storyId_visitorId: { storyId, visitorId } },
-      create: {
-        storyId,
-        visitorId,
-        ipHash,
-        ...geo,
-        ...ua,
-      },
-      update: {
-        ipHash,
-        ...geo,
-        ...ua,
-      },
-    });
-  } else if (ipHash) {
-    await prisma.storyView.upsert({
-      where: { storyId_ipHash: { storyId, ipHash } },
-      create: {
-        storyId,
-        visitorId,
-        ipHash,
-        ...geo,
-        ...ua,
-      },
-      update: {
-        ...geo,
-        ...ua,
-      },
-    });
-  }
-
-  return NextResponse.json({ ok: true });
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const id = z.string().min(1).max(128).parse((await context.params).id);
+    const body = activitySchema.parse(await readTrackingBody(request));
+    const visitor = await trackingContext(request, body.hints, `view:${id}`);
+    if (visitor) await recordStoryActivity(id, visitor.identity, visitor.metadata);
+    return new NextResponse(null, { status: 204 });
+  } catch (error) { return trackingError(error); }
 }

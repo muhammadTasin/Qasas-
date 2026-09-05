@@ -1,5 +1,5 @@
 import { addCommentAction, deleteCommentAction } from "@/lib/actions";
-import type { Comment, User } from "@prisma/client";
+import type { Comment } from "@prisma/client";
 
 export default function CommentSection({
   storyId,
@@ -7,7 +7,7 @@ export default function CommentSection({
   currentUserId,
 }: {
   storyId: string;
-  comments: (Comment & { user: User })[];
+  comments: (Pick<Comment, "id" | "body" | "userId" | "createdAt"> & { user: { name: string | null } })[];
   currentUserId?: string | null;
 }) {
   return (
@@ -44,7 +44,7 @@ export default function CommentSection({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold">
-                  {comment.user.name || comment.user.email}
+                  {comment.user.name || "Anonymous"}
                 </p>
                 <p className="text-xs text-muted">
                   {comment.createdAt.toLocaleString()}

@@ -23,3 +23,8 @@ pnpm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# verification output
+/test-results/
+/playwright-report/
+*.tsbuildinfo

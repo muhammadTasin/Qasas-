@@ -34,6 +34,8 @@ model Story {
   totalReadSeconds Int         @default(0)
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+  publishKey       String?     @unique
   author           User        @relation(fields: [authorId], references: [id])
   reactions        Reaction[]
   comments         Comment[]
@@ -41,6 +43,7 @@ model Story {
 
   @@index([authorId])
   @@index([createdAt])
+  @@index([deletedAt, createdAt])
 }
 
 model Reaction {
@@ -76,6 +79,9 @@ model StoryView {
   ipHash           String?
   userAgent        String?
   deviceType       String?
+  deviceModel      String?
+  devicePlatform   String?
+  isAuthenticated  Boolean?
   os               String?
   browser          String?
   country          String?
@@ -84,12 +90,14 @@ model StoryView {
   firstSeenAt      DateTime @default(now())
   lastSeenAt       DateTime @updatedAt
   totalReadSeconds Int      @default(0)
+  lastReadAt       DateTime?
   story            Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@unique([storyId, visitorId])
   @@unique([storyId, ipHash])
   @@index([storyId])
   @@index([lastSeenAt])
+  @@index([storyId, lastSeenAt])
 }
 
 model SiteVisitor {
@@ -98,6 +106,9 @@ model SiteVisitor {
   ipHash      String?
   userAgent   String?
   deviceType  String?
+  deviceModel     String?
+  devicePlatform  String?
+  isAuthenticated Boolean?
   os          String?
   browser     String?
   country     String?
@@ -105,6 +116,7 @@ model SiteVisitor {
   city        String?
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @updatedAt
+  lastEventAt     DateTime?
 
   @@unique([visitorId])
   @@unique([ipHash])
@@ -116,6 +128,8 @@ model SiteVisitEvent {
   id        String   @id @default(cuid())
   visitorId String?
   ipHash    String?
+  pathname        String?
+  isAuthenticated Boolean?
   createdAt DateTime @default(now())
 
   @@index([createdAt])

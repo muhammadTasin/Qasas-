@@ -1,89 +1,64 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { getClientHints, recentlyTracked, sendAnalytics } from "@/lib/analytics-client";
+import type { DeviceHints } from "@/lib/device-info";
 
 const SEND_INTERVAL_SECONDS = 15;
 const MAX_SESSION_SECONDS = 20 * 60;
 
 export default function StoryEngagementTracker({ storyId }: { storyId: string }) {
-  const accumulatedRef = useRef(0);
-  const totalSentRef = useRef(0);
-  const lastInteractionRef = useRef(0);
-  const visibleRef = useRef(true);
-
-  const sendReadTime = (seconds: number, useBeacon = false) => {
-    const body = JSON.stringify({ seconds });
-    if (useBeacon && navigator.sendBeacon) {
-      const blob = new Blob([body], { type: "application/json" });
-      navigator.sendBeacon(`/api/stories/${storyId}/readtime`, blob);
-      return;
-    }
-
-    fetch(`/api/stories/${storyId}/readtime`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    }).catch(() => {});
-  };
+  const { status } = useSession();
+  useEffect(() => {
+    if (status === "loading") return;
+    let cancelled = false;
+    void getClientHints().then(hints => {
+      if (cancelled || recentlyTracked(`story:${storyId}:${status}`)) return;
+      sendAnalytics(`/api/stories/${storyId}/view`, { hints });
+    });
+    return () => { cancelled = true; };
+  }, [storyId, status]);
 
   useEffect(() => {
-    fetch(`/api/stories/${storyId}/view`, { method: "POST" }).catch(() => {});
-  }, [storyId]);
-
-  useEffect(() => {
-    visibleRef.current = document.visibilityState === "visible";
-
-    const markInteraction = () => {
-      lastInteractionRef.current = Date.now();
+    let accumulated = 0;
+    let totalSent = 0;
+    let lastInteraction = Date.now();
+    let lastTick = performance.now();
+    let hints: DeviceHints = {};
+    void getClientHints().then(value => { hints = value; });
+    const markInteraction = () => { lastInteraction = Date.now(); };
+    const flush = (beacon = false) => {
+      const seconds = Math.min(Math.floor(accumulated), MAX_SESSION_SECONDS - totalSent, 30);
+      if (seconds < 1) return;
+      accumulated -= seconds;
+      totalSent += seconds;
+      sendAnalytics(`/api/stories/${storyId}/readtime`, { seconds, hints }, beacon);
     };
-
-    const onVisibility = () => {
-      visibleRef.current = document.visibilityState === "visible";
+    const visibilityChanged = () => {
+      if (document.visibilityState === "hidden") flush(true);
+      else { lastTick = performance.now(); markInteraction(); }
     };
-
-    const tick = () => {
-      if (!visibleRef.current) return;
-      if (!lastInteractionRef.current) return;
-      if (Date.now() - lastInteractionRef.current > 30_000) return;
-      if (totalSentRef.current >= MAX_SESSION_SECONDS) return;
-
-      accumulatedRef.current += 1;
-      if (accumulatedRef.current >= SEND_INTERVAL_SECONDS) {
-        const remaining = MAX_SESSION_SECONDS - totalSentRef.current;
-        const payload = Math.min(accumulatedRef.current, remaining);
-        accumulatedRef.current = 0;
-        if (payload > 0) {
-          totalSentRef.current += payload;
-          sendReadTime(payload);
-        }
-      }
-    };
-
-    const interval = window.setInterval(tick, 1000);
+    const pageHide = () => flush(true);
+    const interval = window.setInterval(() => {
+      const now = performance.now();
+      const elapsed = Math.min((now - lastTick) / 1000, 2);
+      lastTick = now;
+      if (document.visibilityState !== "visible" || Date.now() - lastInteraction > 30000 || totalSent >= MAX_SESSION_SECONDS) return;
+      accumulated += elapsed;
+      if (accumulated >= SEND_INTERVAL_SECONDS) flush();
+    }, 1000);
     const events = ["scroll", "keydown", "pointerdown", "touchstart"];
-    events.forEach((event) => window.addEventListener(event, markInteraction));
-    document.addEventListener("visibilitychange", onVisibility);
-
-    const onUnload = () => {
-      if (accumulatedRef.current > 0) {
-        const remaining = MAX_SESSION_SECONDS - totalSentRef.current;
-        const payload = Math.min(accumulatedRef.current, remaining);
-        if (payload > 0) {
-          sendReadTime(payload, true);
-          totalSentRef.current += payload;
-        }
-        accumulatedRef.current = 0;
-      }
-    };
-    window.addEventListener("beforeunload", onUnload);
-
+    events.forEach(event => window.addEventListener(event, markInteraction, { passive: true }));
+    document.addEventListener("visibilitychange", visibilityChanged);
+    window.addEventListener("pagehide", pageHide);
     return () => {
       window.clearInterval(interval);
-      events.forEach((event) => window.removeEventListener(event, markInteraction));
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("beforeunload", onUnload);
+      events.forEach(event => window.removeEventListener(event, markInteraction));
+      document.removeEventListener("visibilitychange", visibilityChanged);
+      window.removeEventListener("pagehide", pageHide);
+      flush(true);
     };
   }, [storyId]);
-
   return null;
 }

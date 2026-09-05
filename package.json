@@ -4,9 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test tests/analytics.test.ts",
+    "test:integration": "tsx --test tests/integration.test.mts",
+    "test:e2e": "playwright test",
+    "test:migration": "node tests/migration.mjs"
   },
   "dependencies": {
     "next": "16.1.4",
@@ -27,6 +31,10 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@playwright/test": "^1.63.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/ua-parser-js": "^0.7.39",
+    "tsx": "^4.23.13"
   }
 }
