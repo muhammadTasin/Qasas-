@@ -37,11 +37,15 @@ try {
   `);
   const snapshot = () => sql(database, `SELECT json_build_object('stories',(SELECT json_agg(json_build_array(id,title,content,"totalReadSeconds","createdAt")) FROM "Story"),'views',(SELECT json_agg(json_build_array(id,"visitorId","totalReadSeconds")) FROM "StoryView"),'comments',(SELECT json_agg(row_to_json(c)) FROM "Comment" c),'reactions',(SELECT json_agg(row_to_json(r)) FROM "Reaction" r),'siteCount',(SELECT count(*) FROM "SiteVisitor"),'eventCount',(SELECT count(*) FROM "SiteVisitEvent"));`);
   const before = snapshot();
+  const originalUser = sql(database, `SELECT json_build_array(id,email,"passwordHash","createdAt","updatedAt") FROM "User" WHERE id = 'legacy-user'`);
   execFileSync('npx', ['prisma', 'migrate', 'deploy'], { env, stdio: 'pipe' });
   assert.equal(snapshot(), before);
+  assert.equal(sql(database, `SELECT json_build_array(id,email,"passwordHash","createdAt","updatedAt") FROM "User" WHERE id = 'legacy-user'`), originalUser);
+  assert.equal(sql(database, `SELECT "sessionVersion" FROM "User" WHERE id = 'legacy-user'`), '0');
+  assert.equal(sql(database, `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'User' AND column_name = 'passwordHash'`), 'YES');
   assert.equal(sql(database, `SELECT count(*) FROM "Story" WHERE "deletedAt" IS NULL AND "publishKey" IS NULL`), '1');
   assert.equal(sql(database, `SELECT count(*) FROM "StoryView" WHERE "deviceModel" IS NULL AND "isAuthenticated" IS NULL`), '1');
-  console.log('PASS: additive migration preserves pre-existing stories, comments, reactions, views, read time, site visitors and events.');
+  console.log('PASS: migrations preserve existing account/password data, stories, comments, reactions, views, read time, site visitors and events; legacy Google accounts can retain a NULL password hash.');
 } finally {
   // Only the uniquely named temporary database created by this script is removed.
   if (created) sql('postgres', `DROP DATABASE "${database}"`);

@@ -23,6 +23,8 @@ export async function getStoryInsights(storyId: string) {
   let guests = 0;
   let unknown = 0;
   let mobile = 0;
+  let loggedInReadSeconds = 0;
+  let guestReadSeconds = 0;
   for (const group of groups) {
     const count = group._count._all;
     uniqueViewsCount += count;
@@ -30,6 +32,8 @@ export async function getStoryInsights(storyId: string) {
     if (group.isAuthenticated === true) loggedIn += count;
     else if (group.isAuthenticated === false) guests += count;
     else unknown += count;
+    if (group.isAuthenticated === true) loggedInReadSeconds += group._sum.totalReadSeconds || 0;
+    if (group.isAuthenticated === false) guestReadSeconds += group._sum.totalReadSeconds || 0;
     if (group.deviceType === "mobile") mobile += count;
   }
   // Explicitly construct the response. Internal identifiers and raw UA never
@@ -45,7 +49,7 @@ export async function getStoryInsights(storyId: string) {
   return {
     uniqueViewsCount, totalReadSeconds,
     avgReadSecondsPerView: uniqueViewsCount ? Math.round(totalReadSeconds / uniqueViewsCount) : 0,
-    loggedIn, guests, unknown, mobilePercent: uniqueViewsCount ? Math.round(mobile / uniqueViewsCount * 100) : 0,
+    loggedIn, guests, unknown, loggedInReadSeconds, guestReadSeconds, mobilePercent: uniqueViewsCount ? Math.round(mobile / uniqueViewsCount * 100) : 0,
     viewers,
   };
 }

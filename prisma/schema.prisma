@@ -17,7 +17,10 @@ enum ReactionType {
 model User {
   id           String     @id @default(cuid())
   email        String     @unique
-  passwordHash String
+  passwordHash String?
+  sessionVersion Int @default(0)
+  accounts Account[]
+  passwordReset PasswordResetToken?
   name         String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -133,4 +136,39 @@ model SiteVisitEvent {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model PasswordResetToken {
+  tokenHash String @id
+  userId String @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+
+model PasswordResetRateLimit {
+  key String @id
+  count Int
+  resetAt DateTime
+  @@index([resetAt])
 }

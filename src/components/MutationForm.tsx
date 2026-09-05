@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 type Result = { error?: string; redirectTo?: string };
 
-export default function MutationForm({ action, children, className, buttonClassName, label, pendingLabel, publish = false }: {
+export default function MutationForm({ action, children, className, buttonClassName, label, pendingLabel, publish = false, buttonIcon, buttonWrapperClassName }: {
   action: (formData: FormData) => Promise<Result>;
   children?: ReactNode;
   className?: string;
@@ -13,6 +13,8 @@ export default function MutationForm({ action, children, className, buttonClassN
   label: string;
   pendingLabel: string;
   publish?: boolean;
+  buttonIcon?: ReactNode;
+  buttonWrapperClassName?: string;
 }) {
   const router = useRouter();
   const locked = useRef(false);
@@ -45,10 +47,12 @@ export default function MutationForm({ action, children, className, buttonClassN
   return (
     <form onSubmit={submit} className={className} aria-busy={pending}>
       {children}
+      <div className={buttonWrapperClassName}>
       <button type="submit" disabled={pending} className={`${buttonClassName} disabled:cursor-wait disabled:opacity-60`}>
-        {pending ? pendingLabel : label}
+        {buttonIcon}{pending ? pendingLabel : label}
       </button>
-      {error ? <p role="alert" className="text-sm text-[#bd6a4c]">{error}</p> : null}
+      </div>
+      {error ? <p role="alert" className="text-sm text-rose-600">{error}</p> : null}
     </form>
   );
 }

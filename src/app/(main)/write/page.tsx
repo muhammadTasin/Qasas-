@@ -1,4 +1,4 @@
-import MutationForm from "@/components/MutationForm";
+import StoryEditor from "@/components/StoryEditor";
 import { getSession } from "@/lib/session";
 import { createStoryAction } from "@/lib/actions";
 import { redirect } from "next/navigation";
@@ -9,29 +9,5 @@ export default async function WritePage() {
     redirect("/signin");
   }
 
-  return (
-    <div className="glass mx-auto max-w-3xl rounded-[32px] px-8 py-10">
-      <h1 className="text-3xl">Write a new story</h1>
-      <MutationForm action={createStoryAction} className="mt-6 flex flex-col gap-4"
-        buttonClassName="w-fit rounded-full bg-[#2d6a6f] px-5 py-3 text-sm text-white"
-        label="Publish story" pendingLabel="Publishing..." publish>
-        <input
-          name="title"
-          minLength={3}
-          maxLength={160}
-          required
-          placeholder="Story title"
-          className="glass rounded-2xl px-4 py-3 text-base outline-none"
-        />
-        <textarea
-          name="content"
-          minLength={20}
-          required
-          rows={12}
-          placeholder="Share your story..."
-          className="glass rounded-2xl px-4 py-3 text-sm leading-relaxed outline-none"
-        />
-      </MutationForm>
-    </div>
-  );
+  return <StoryEditor action={createStoryAction} label="Publish Story" pendingLabel="Publishing..." publish />;
 }

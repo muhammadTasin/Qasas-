@@ -202,4 +202,32 @@ See [the implementation report](docs/implementation-report.md) for the full chan
 
 
 
+## Original Qasas and Journal themes
 
+The default presentation now restores the polished deployment at https://qasas-web.vercel.app/ from its original `qasas2` source in commit `f214445`. The previous implementation retained the simplified root repository UI; that was a different presentation. The restoration uses the existing routes, database, authenticated actions and analytics, not the old backend.
+
+The small moon/sun control switches between Original Qasas and Journal. A validated `qasas-theme` cookie is read during server rendering, so the selected theme is already in the first HTML response. The preference is also written to localStorage. No theme database fields, separate routes, duplicate data fetching or theme library are needed. Journal is based on the supplied black editorial reference; its Stitch project requires Google access and was not accessible to the verification browser. Existing stories have no cover field, so cards remain text-only rather than attaching invented images to stories.
+
+## Password reset and existing Google accounts
+
+Forgot password is available from `/signin` in both themes. Requests always return the same generic message. Work is scheduled with Next.js `after()` so account lookup and email delivery do not change the visible response timing. Configure these **server-only** variables before enabling delivery:
+
+| Variable | Purpose |
+| --- | --- |
+| `RESEND_API_KEY` | API key from Resend, with permission to send email. |
+| `PASSWORD_RESET_FROM` | A sender address on your verified Resend domain. |
+| `NEXTAUTH_URL` | Existing canonical application origin, HTTPS in production. Reset URLs are derived only from this setting, never request Host headers. |
+| `NEXTAUTH_SECRET` | Existing stable auth secret, also used to hash rate-limit subjects. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional existing Google OAuth configuration. When both are present, the original Google button/provider is available alongside credentials. |
+
+Resend requires a verified sender/domain ([sending API](https://resend.com/docs/api-reference/emails/send-email)). This implementation uses native `fetch`; no email SDK or template library was added. Set the Google authorized redirect URI to your configured application origin followed by `/api/auth/callback/google`. Retain the existing `NEXTAUTH_SECRET` and original Google client configuration when continuing an existing deployment.
+
+Reset tokens contain 32 cryptographically random bytes. Only SHA-256 digests are stored, with 30-minute expiry and one active token per account. Successful consumption and password update occur in one transaction; concurrent reuse cannot succeed. Passwords use the existing bcrypt cost of 12 and respect bcrypt's 72-byte input limit. A session version increments on reset so previously issued JWT sessions lose access on their next authenticated request. Tokens travel in the email link's URL fragment, which is absent from request URLs/referrer headers, and are submitted only in the reset form body. Used tokens are deleted; expired tokens are rejected and cleaned during subsequent requests. Failed email delivery removes its pending token and logs no email address or token.
+
+Database-backed limits apply equally to registered and unknown email addresses: one request per email per minute and ten per network per hour. Subjects are HMAC hashes rather than stored email/IP addresses. Platform rate limiting is still appropriate for distributed abuse. Responses follow the [OWASP password-reset guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html).
+
+Apply the **new** migration `20260906120000_password_reset_and_auth_compatibility` before serving this version, using `npx prisma migrate deploy`. It adds reset-token and rate-limit tables, a session-version column, and an `Account` table only if it is absent. It also permits NULL password hashes for the original Google-only accounts, without changing existing hashes or removing any columns. Existing Google Account links are reused and are never relinked just because an email matches another account. Prisma tolerates a missing password hash on legacy Google users; newly created accounts still supply a bcrypt hash. The already applied `20260905180000_private_analytics_and_story_trash` migration is unchanged. No existing columns or account/story/analytics data are removed.
+
+Without email configuration, the request page still returns the required generic response, but no email can be delivered. Delivery configuration failures are reported only in server logs. Local tests exercise the mail adapter with synthetic recipients and an injected capture transport; no real reset emails or production password changes are performed during verification.
+
+See [the UI restoration report](docs/ui-restoration-report.md) for the exact files, comparison measurements, screenshots and validation results.
