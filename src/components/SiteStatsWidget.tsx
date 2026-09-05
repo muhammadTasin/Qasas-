@@ -1,27 +1,30 @@
-import { prisma } from "@/lib/prisma";
+"use client";
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
-}
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
-export default async function SiteStatsWidget() {
-  const now = new Date();
-  const last30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+type Stats = { uniqueVisitorsLifetime: number; uniqueVisitorsLast30Days: number; totalVisits: number };
+const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
 
-  const [uniqueLifetime, uniqueLast30, totalVisits] = await Promise.all([
-    prisma.siteVisitor.count(),
-    prisma.siteVisitor.count({ where: { lastSeenAt: { gte: last30 } } }),
-    prisma.siteVisitEvent.count(),
-  ]);
-
+export default function SiteStatsWidget() {
+  const { status } = useSession();
+  const [stats, setStats] = useState<Stats | null>(null);
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const controller = new AbortController();
+    fetch("/api/site/stats", { signal: controller.signal, cache: "no-store" })
+      .then(response => response.ok ? response.json() as Promise<Stats> : null)
+      .then(value => { if (!controller.signal.aborted) setStats(value); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [status]);
+  if (status !== "authenticated" || !stats) return null;
   return (
     <div className="glass rounded-3xl px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="badge bg-white/70">
-          Unique visitors to Qasas: {formatNumber(uniqueLifetime)}
-        </span>
-        <span className="badge bg-white/60">Last 30 days: {formatNumber(uniqueLast30)}</span>
-        <span className="badge bg-white/50">Total visits: {formatNumber(totalVisits)}</span>
+        <span className="badge bg-white/70">Unique visitors to Qasas: {formatNumber(stats.uniqueVisitorsLifetime)}</span>
+        <span className="badge bg-white/60">Last 30 days: {formatNumber(stats.uniqueVisitorsLast30Days)}</span>
+        <span className="badge bg-white/50">Total visits: {formatNumber(stats.totalVisits)}</span>
       </div>
     </div>
   );

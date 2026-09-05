@@ -1,59 +1,12 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { getGeoFromHeaders, getUaInfo, getVisitorIdentity } from "@/lib/analytics";
-
-const bodySchema = z.object({}).passthrough();
+import { recordSiteVisit } from "@/lib/tracking";
+import { readTrackingBody, siteVisitSchema, trackingContext, trackingError } from "@/lib/tracking-request";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  bodySchema.parse(body);
-  const headers = request.headers;
-  const { visitorId, ipHash } = getVisitorIdentity(headers);
-  const geo = getGeoFromHeaders(headers);
-  const ua = getUaInfo(headers);
-
-  if (!visitorId && !ipHash) {
-    return NextResponse.json({ ok: true });
-  }
-
-  if (visitorId) {
-    await prisma.siteVisitor.upsert({
-      where: { visitorId },
-      create: {
-        visitorId,
-        ipHash,
-        ...geo,
-        ...ua,
-      },
-      update: {
-        ipHash,
-        ...geo,
-        ...ua,
-      },
-    });
-  } else if (ipHash) {
-    await prisma.siteVisitor.upsert({
-      where: { ipHash },
-      create: {
-        visitorId,
-        ipHash,
-        ...geo,
-        ...ua,
-      },
-      update: {
-        ...geo,
-        ...ua,
-      },
-    });
-  }
-
-  await prisma.siteVisitEvent.create({
-    data: {
-      visitorId,
-      ipHash,
-    },
-  });
-
-  return NextResponse.json({ ok: true });
+  try {
+    const body = siteVisitSchema.parse(await readTrackingBody(request));
+    const context = await trackingContext(request, body.hints, "site");
+    if (context) await recordSiteVisit(context.identity, context.metadata, body.pathname);
+    return new NextResponse(null, { status: 204 });
+  } catch (error) { return trackingError(error); }
 }

@@ -1,8 +1,9 @@
+import MutationForm from "@/components/MutationForm";
+import { deleteStoryAction } from "@/lib/actions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/session";
 import ReactionPills from "@/components/ReactionPills";
 import CommentSection from "@/components/CommentSection";
 import StoryEngagementTracker from "@/components/StoryEngagementTracker";
@@ -14,25 +15,27 @@ export const dynamic = "force-dynamic";
 export default async function StoryPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const story = await prisma.story.findUnique({
-    where: { id: params.id },
-    include: {
-      author: true,
-      reactions: true,
-      comments: {
-        include: { user: true },
-        orderBy: { createdAt: "desc" },
+  const { id } = await params;
+  const [story, session] = await Promise.all([
+    prisma.story.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true, authorId: true, title: true, content: true,
+        createdAt: true, totalReadSeconds: true,
+        author: { select: { name: true } },
+        reactions: { select: { userId: true, type: true } },
+        comments: {
+          select: { id: true, userId: true, body: true, createdAt: true, user: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
       },
-    },
-  });
+    }),
+    getSession(),
+  ]);
+  if (!story) notFound();
 
-  if (!story) {
-    notFound();
-  }
-
-  const session = await getServerSession(authOptions);
   const userId = session?.user?.id || null;
   const userReaction = story.reactions.find((reaction) => reaction.userId === userId)
     ?.type;
@@ -55,7 +58,7 @@ export default async function StoryPage({
 
       <section className="glass rounded-[32px] px-8 py-10">
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
-          <span>By {story.author.name || story.author.email}</span>
+          <span>By {story.author.name || "Anonymous"}</span>
           <span>{story.createdAt.toLocaleDateString()}</span>
         </div>
         <h1 className="mt-4 text-4xl leading-tight">{story.title}</h1>
@@ -71,6 +74,9 @@ export default async function StoryPage({
             >
               Edit
             </Link>
+            <MutationForm action={deleteStoryAction} label="Delete" pendingLabel="Deleting..." buttonClassName="rounded-full border border-[#bd6a4c]/40 px-4 py-2 text-[#bd6a4c]">
+              <input type="hidden" name="storyId" value={story.id} />
+            </MutationForm>
             <Link
               href={`/stories/${story.id}/insights`}
               className="rounded-full border border-black/10 px-4 py-2"

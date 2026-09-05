@@ -1,25 +1,11 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
+import { getSiteStats } from "@/lib/site-stats";
 
-const querySchema = z.object({}).passthrough();
-
-export async function GET(request: Request) {
-  const query = Object.fromEntries(new URL(request.url).searchParams);
-  querySchema.parse(query);
-  const now = new Date();
-  const last30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-  const [uniqueVisitorsLifetime, uniqueVisitorsLast30Days, totalVisits] =
-    await Promise.all([
-      prisma.siteVisitor.count(),
-      prisma.siteVisitor.count({ where: { lastSeenAt: { gte: last30 } } }),
-      prisma.siteVisitEvent.count(),
-    ]);
-
-  return NextResponse.json({
-    uniqueVisitorsLifetime,
-    uniqueVisitorsLast30Days,
-    totalVisits,
-  });
+export async function GET() {
+  const session = await getSession();
+  const headers = { "Cache-Control": "private, no-store" };
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
+  try { return NextResponse.json(await getSiteStats(), { headers }); }
+  catch { return NextResponse.json({ error: "Statistics unavailable" }, { status: 503, headers }); }
 }

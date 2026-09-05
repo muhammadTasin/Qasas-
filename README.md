@@ -72,7 +72,7 @@ Supabase PostgreSQL
 ## Setup Instructions
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20.9+
 - npm or yarn
 - Supabase account (PostgreSQL database)
 
@@ -87,10 +87,10 @@ cd Qasas-
 npm install
 
 # Create a local environment file
-touch .env.local
+touch .env
 ```
 
-Add your Supabase credentials to `.env.local`
+Add your Supabase credentials to `.env` (Prisma CLI reads this file too).
 
 ### Environment Variables
 
@@ -99,6 +99,7 @@ DATABASE_URL=postgresql://user:password@host:5432/database
 DIRECT_URL=postgresql://user:password@host:5432/database
 NEXTAUTH_SECRET=your-secret-key-here
 NEXTAUTH_URL=http://localhost:3000
+ANALYTICS_SALT=replace-with-a-stable-random-secret-of-at-least-32-characters
 ```
 
 ### Running Locally
@@ -109,14 +110,69 @@ npm run dev
 
 Visit `http://localhost:3000`
 
-### Prisma Migrations (Supabase)
+### Prisma migrations and deployment
 
-If you encounter a cross-schema error with Supabase:
+Configure `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, and `ANALYTICS_SALT` in your deployment environment before running:
 
 ```bash
-psql $DIRECT_URL -c "DROP TABLE IF EXISTS public.profiles CASCADE;"
-npx prisma migrate dev
+npm ci
+npx prisma validate
+npx prisma migrate deploy
+npx prisma generate
+npm run lint
+npm run build
 ```
+
+Run `prisma migrate deploy` against the intended database **before** serving the updated application. The new migration only adds nullable columns and indexes; it preserves existing records. Do not use `migrate reset`, `db push --force-reset`, or destructive SQL. No deployment is performed by these commands. Deploy the verified commit through your usual Vercel workflow afterward. The build script regenerates Prisma Client so cached dependencies cannot leave it behind the schema.
+
+For Supabase/Vercel, use the provider's transaction-pooler URL for `DATABASE_URL` (with the connection options required by your provider, such as `pgbouncer=true`) and a migration-capable direct or session-pooler URL for `DIRECT_URL`. Start with a small per-instance connection limit appropriate to your database plan; avoid a large default pool on every serverless instance. Prisma is reused within the warm process and is not disconnected after each request.
+
+Generate `ANALYTICS_SALT` once with `openssl rand -hex 32`, store it as a server-only secret, and keep it stable. Do not use a `NEXT_PUBLIC_` prefix. Missing or fewer than 32 characters disables tracking with a generic 503 response; reading and story mutations do not depend on analytics. Changing this secret changes private labels and IP fallback identities. If an existing strong salt is configured, keep it.
+
+### Visitor analytics and Trash
+
+- Global statistics are shown only to signed-in users. The statistics API also requires authentication and sends `Cache-Control: private, no-store`.
+- Story Insights is restricted to the active story's author. It returns sanitized display data, not raw visitor IDs, IP hashes, user agents, email addresses or authentication IDs.
+- Browser identity uses a secure, HttpOnly, SameSite=Lax cookie with a one-year expiry. Logging in does not replace it. Clearing cookies or changing browsers creates a different visitor.
+- Private labels combine a browser-supplied model (or truthful OS/device fallback) with a 12-character HMAC suffix. There is no device-model lookup table or fingerprinting. UA Client Hints are best effort; unavailable hints time out after 200 ms. Only model, platform and mobile/device-type hints are collected.
+- iPhone Safari usually exposes only “iPhone”; desktop browsers usually cannot expose a manufacturer/model. Reduced Android UAs may also lack a model. No hardware is inferred from screen dimensions.
+- Location comes only from Vercel's network geo headers. Country codes are formatted using `Intl.DisplayNames`; unavailable cities/regions are not guessed. Region codes remain as supplied when no authoritative name is available. Outside Vercel, only trust geo headers injected by your own proxy. No GPS permission or coordinates are used.
+- Guest/logged-in visitor counts represent each browser's **latest observed** authentication state. Earlier records with no known state are marked as legacy/unknown. Route events preserve the state at the event time. No account ID is needed for this distinction.
+- Story uniqueness remains enforced by the existing `(storyId, visitorId)` or IP-fallback unique keys. New views are available on the next Insights request. At most 20 recent visitors are loaded; totals are aggregated across all rows.
+- Site statistics and the public story list have a 60-second data cache. Story create/edit/delete/restore immediately expire the list cache, with targeted route invalidation. Authentication-sensitive pages remain dynamically rendered.
+- Tracking never blocks rendering/navigation. Read time is batched every 15 seconds while visible/recently active, capped at 20 minutes per mounted story. Requests are bounded to 4 KiB and 30 seconds per increment. A database gate coalesces duplicate read increments within 10 seconds and site events within 3 seconds, including across server instances. Actual guest/login transitions are retained even inside the event window. Very short final read-time flushes within the gate can be omitted. A bounded local throttle sheds repeat writes; use platform-level rate limits for deliberate distributed abuse.
+- Normal Delete moves a story into database-backed Trash via `deletedAt`. The subtle **Trash** link is on **My stories** (`/me?trash=1`). Only its owner can restore it. There is no permanent-delete UI. Edit reuses the original route and updates the same record. Deleted stories are excluded from public reads and interaction/analytics writes.
+
+### Verification
+
+```bash
+npm test
+```
+
+Database and browser suites deliberately refuse a non-local database or any database name other than `qasas_test`. Create a dedicated empty local test database and apply migrations to it first. Never point these tests at production.
+
+```bash
+export TEST_DATABASE_URL='postgresql://TEST_USER:TEST_PASSWORD@127.0.0.1:5432/qasas_test'
+DATABASE_URL="$TEST_DATABASE_URL" DIRECT_URL="$TEST_DATABASE_URL" npx prisma migrate deploy
+npm run test:integration
+npm run test:migration
+```
+
+The migration suite requires the PostgreSQL `psql` CLI and a local role allowed to create temporary databases. It applies the old migrations, inserts marked fixtures, applies the additive migration, verifies preservation, and removes only its own temporary database.
+
+For browser tests, configure `.env` with that same isolated test database, a test `NEXTAUTH_SECRET` and `ANALYTICS_SALT`, and `NEXTAUTH_URL=http://localhost:3000`. Then run:
+
+```bash
+npx playwright install chromium
+npm run build
+npm run start
+# In a second terminal with TEST_DATABASE_URL exported:
+npm run test:e2e
+```
+
+The browser suite signs up local test accounts and exercises owner/non-owner mutation requests, privacy, guest tracking, login continuity, Trash/Restore, comments, reactions, desktop/mobile layout, and analytics transport failure. `TEST_BROWSER_PATH` can optionally select an existing Chromium executable.
+
+See [the implementation report](docs/implementation-report.md) for the full change list and validation results.
 
 ---
 
