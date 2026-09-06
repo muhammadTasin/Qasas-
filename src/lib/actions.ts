@@ -7,9 +7,11 @@ import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { STORY_LIST_TAG } from "./story-data";
 import { editStory, moveStoryToTrash, publishStory, restoreStory, withActiveStory } from "./story-mutations";
+import { restoreStoryVersion, StoryVersionConflict } from "./story-versions";
 
 const storySchema = z.object({ title: z.string().min(3).max(160), content: z.string().min(20) });
 const idSchema = z.string().min(1).max(128);
+const versionSchema = z.coerce.number().int().min(1).max(2147483647);
 
 async function requireSession() {
   const session = await getSession();
@@ -44,12 +46,31 @@ export async function updateStoryAction(formData: FormData) {
   const session = await requireSession();
   const id = idSchema.safeParse(formData.get("storyId"));
   const parsed = storySchema.safeParse(Object.fromEntries(formData));
+  const expectedVersion = versionSchema.safeParse(formData.get("expectedVersion"));
   if (!id.success || !parsed.success) return { error: "Enter a title of 3–160 characters and a story of at least 20 characters." };
+  if (!expectedVersion.success) return { error: "Reload the editor before saving this story." };
   try {
-    await editStory(session.user.id, id.data, parsed.data);
+    await editStory(session.user.id, id.data, { ...parsed.data, expectedVersion: expectedVersion.data });
     invalidateStory(id.data);
     return { redirectTo: `/stories/${id.data}` };
-  } catch { return { error: "Could not save this story. Check that it is still active and belongs to you." }; }
+  } catch (error) {
+    return { error: error instanceof StoryVersionConflict ? error.message : "Could not save this story. Check that it is still active and belongs to you." };
+  }
+}
+
+export async function restoreStoryVersionAction(formData: FormData) {
+  const session = await requireSession();
+  const id = idSchema.safeParse(formData.get("storyId"));
+  const version = versionSchema.safeParse(formData.get("version"));
+  const expectedVersion = versionSchema.safeParse(formData.get("expectedVersion"));
+  if (!id.success || !version.success || !expectedVersion.success) return { error: "Invalid story version." };
+  try {
+    await restoreStoryVersion(session.user.id, id.data, version.data, expectedVersion.data);
+    invalidateStory(id.data);
+    return { redirectTo: `/stories/${id.data}` };
+  } catch (error) {
+    return { error: error instanceof StoryVersionConflict ? error.message : "Could not restore this version. Check that the story is still active and belongs to you." };
+  }
 }
 
 export async function deleteStoryAction(formData: FormData) {

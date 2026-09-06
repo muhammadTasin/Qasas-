@@ -12,7 +12,7 @@ if (!connection || !['localhost', '127.0.0.1'].includes(new URL(connection).host
 for (const existingGoogleAccount of [false, true]) {
   const url = new URL(connection);
   const database = `qasas_migration_${randomUUID().replaceAll('-', '')}`;
-  const baseEnv = { ...process.env, PGHOST: url.hostname, PGPORT: url.port || '5432', PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password) };
+  const baseEnv = { ...process.env, PGHOST: url.searchParams.get('host') || url.hostname, PGPORT: url.port || '5432', PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password) };
   const sql = (database, statement) => execFileSync('psql', ['-X', '-v', 'ON_ERROR_STOP=1', '-At', '-c', statement], { env: { ...baseEnv, PGDATABASE: database }, encoding: 'utf8' }).trim();
   const temp = mkdtempSync(join(tmpdir(), 'qasas-migration-'));
   let created = false;
@@ -66,6 +66,8 @@ for (const existingGoogleAccount of [false, true]) {
     sql(database, `ALTER TABLE "SiteVisitor" DROP COLUMN "userId"`);
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], { env, stdio: 'pipe' });
     assert.equal(snapshot(), before);
+    assert.equal(sql(database, `SELECT count(*) FROM "StoryVersion" v JOIN "Story" s ON s.id=v."storyId" WHERE v.version=1 AND s."currentVersion"=1 AND v.title=s.title AND v.content=s.content AND v."createdAt"=s."updatedAt"`), existingGoogleAccount ? '2' : '1');
+    assert.equal(sql(database, `SELECT confdeltype FROM pg_constraint WHERE conname='StoryVersion_storyId_fkey'`), 'c');
     assert.deepEqual(JSON.parse(sql(database, `SELECT json_agg(to_jsonb(v) - 'userId') FROM "SiteVisitor" v`)), JSON.parse(originalVisitors));
     assert.equal(sql(database, `SELECT json_agg(row_to_json(e)) FROM "SiteVisitEvent" e`), originalEvents);
     assert.equal(sql(database, `SELECT count(*) FROM "SiteVisitor" WHERE "userId" IS NULL`), '1');

@@ -8,7 +8,7 @@ if (!connection || !["localhost", "127.0.0.1"].includes(new URL(connection).host
 // Global counts require isolation from the other concurrently running suites.
 const url = new URL(connection);
 const database = `qasas_voices_${randomUUID().replaceAll("-", "")}`;
-const pgEnv = { ...process.env, PGHOST: url.hostname, PGPORT: url.port || "5432", PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password), PGDATABASE: "postgres" };
+const pgEnv = { ...process.env, PGHOST: url.searchParams.get("host") || url.hostname, PGPORT: url.port || "5432", PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password), PGDATABASE: "postgres" };
 const sql = (statement: string) => execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-At", "-c", statement], { env: pgEnv, encoding: "utf8" });
 url.pathname = `/${database}`;
 process.env.DATABASE_URL = url.toString();

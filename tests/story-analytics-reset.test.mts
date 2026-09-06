@@ -9,7 +9,7 @@ if (!connection || !["localhost", "127.0.0.1"].includes(new URL(connection).host
 test("reset CLI refuses unconfirmed execution, preserves all unrelated data, rolls back failure and is repeatable", async () => {
   const url = new URL(connection);
   const database = `qasas_reset_${randomUUID().replaceAll("-", "")}`;
-  const pgEnv = { ...process.env, PGHOST: url.hostname, PGPORT: url.port || "5432", PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password) };
+  const pgEnv = { ...process.env, PGHOST: url.searchParams.get("host") || url.hostname, PGPORT: url.port || "5432", PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password) };
   const sql = (statement: string) => execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-At", "-c", statement], { env: { ...pgEnv, PGDATABASE: "postgres" }, encoding: "utf8" });
   sql(`CREATE DATABASE "${database}"`);
   url.pathname = `/${database}`;

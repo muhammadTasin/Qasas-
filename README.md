@@ -22,13 +22,27 @@ Qasas is a full-stack web application where users can publish stories, read stor
 
 ## Key Features
 
-- **User Authentication:** Email signup/login with password hashing (bcryptjs)
-- **Story Publishing:** Create, read, update stories with rich metadata
+- **User Authentication:** Email signup/login with password hashing (bcryptjs), plus Google sign-in when configured
+- **Story Publishing:** Publish and edit stories, with immediate feed/cache refresh after successful changes
+- **Story Version History:** Automatic title/content snapshots, author-only previews and restoration that preserves all later versions
 - **Reactions System:** Users can react with LOVE, SORROW, or ANGRY emotions (one per user per story)
-- **Comments:** Threaded comments on stories with cascade delete handling
+- **Comments:** Comments on stories with cascade delete handling
 - **Read Time Tracking:** Estimates reading time based on content length and tracks actual time spent
 - **Analytics:** Per-story view tracking with device, browser, OS, and geolocation detection
-- **Site Visitor Tracking:** Anonymous visitor analytics with IP hashing and user agent parsing
+- **Site Visitor Tracking:** Account-aware unique visitors and anonymous browser tracking with IP hashing and user agent parsing
+- **Private Site Statistics:** Total Views and the separate Unique Voices footer badges are visible only to logged-in users, with server-side authorization
+- **Story Trash:** Owner-only soft deletion and restoration preserve story relationships and version history
+
+### Recent Features
+
+- Added authenticated site-wide view statistics to the existing rounded footer badges. Guests neither request nor see the statistics; `/api/site/stats` independently checks the session and returns `401` without counts to unauthenticated requests. Responses use `Cache-Control: private, no-store`.
+- **Total Views** uses the existing `SiteVisitEvent` total (`totalVisits` in the API), including already recorded traffic. It retains the existing three-second database deduplication and authentication-transition events; it is a total of accepted site visit events, not a unique-person count or an unfiltered count of every browser refresh. No duplicate tracker was added. **Unique Voices** remains the separate account/anonymous-visitor metric, not an author count.
+- The existing story edit page now includes **Version History**. Each changed title or content creates an immutable snapshot with a version number and timestamp; identical saves, reading activity and Trash changes do not create content versions. Previewing history leaves unsaved editor text intact.
+- Restoring a previous version publishes its title/content as a new current version and records which version it came from. Later history, story IDs, authorship, original publication dates, comments, reactions and reading totals remain intact. Unsaved editor changes are not included in a restore. Stale editor saves/restores are rejected so another tab cannot overwrite newer work.
+- History lists, individual previews and restoration all enforce active-story ownership on the server. History is unavailable while a story is in Trash, returns after Trash restoration, and cascades only if the story is permanently removed from the database. Lists load 20 versions at a time; full content is fetched only for the selected preview.
+- The additive `20260907000000_story_version_history` migration creates `StoryVersion`, adds `Story.currentVersion`, and saves every existing story's current state as version 1, including stories in Trash. Pre-feature overwritten content cannot be recovered. Run pending migrations before serving this application version, using the deployment steps below.
+
+Qasas currently publishes saved edits immediately; it does not maintain separate saved drafts and published versions. The editor stores plain text, and snapshots preserve that text exactly, including embedded URLs. There is no separate image/attachment storage to version.
 
 ---
 
@@ -141,7 +155,7 @@ Generate `ANALYTICS_SALT` once with `openssl rand -hex 32`, store it as a server
 - Location comes only from Vercel's network geo headers. Country codes are formatted using `Intl.DisplayNames`; unavailable cities/regions are not guessed. Subdivision codes use the static ISO 3166 dataset where a matching name exists; otherwise they remain explicitly labeled region codes. Outside Vercel, only trust geo headers injected by your own proxy. No GPS permission or coordinates are used.
 - Story reader counts use each browser's **latest observed** authentication state and its server-session user link. Signed-in readers are combined across browsers; guests retain anonymous browser identity. Earlier rows without reliable identity remain separately labeled legacy records. Global site analytics retain their existing behavior.
 - Story uniqueness remains enforced by the existing `(storyId, visitorId)` or IP-fallback unique keys. New views are available on the next Insights request. Story Insights returns at most 20 recent readers per category; unique counts and read totals cover all streams, combining signed-in users across browsers.
-- Site statistics and the public story list have a 60-second data cache. Story create/edit/delete/restore immediately expire the list cache, with targeted route invalidation. Authentication-sensitive pages remain dynamically rendered.
+- Site statistics use 30-second cache buckets and visible-client polling, with a freshness budget of 60 seconds. The public story list has a 60-second data cache. Story create/edit/delete/restore and version restoration immediately expire the list cache, with targeted route invalidation. Authentication-sensitive pages remain dynamically rendered.
 - Tracking never blocks rendering/navigation. Read time is batched every 15 seconds while visible/recently active, capped at 20 minutes per mounted story. Requests are bounded to 4 KiB and 30 seconds per increment. A database gate coalesces duplicate read increments within 10 seconds and site events within 3 seconds, including across server instances. Actual guest/login transitions are retained even inside the event window. Very short final read-time flushes within the gate can be omitted. A bounded local throttle sheds repeat writes; use platform-level rate limits for deliberate distributed abuse.
 - Normal Delete moves a story into database-backed Trash via `deletedAt`. The subtle **Trash** link is on **My stories** (`/me?trash=1`). Only its owner can restore it. There is no permanent-delete UI. Edit reuses the original route and updates the same record. Deleted stories are excluded from public reads and interaction/analytics writes.
 
@@ -173,6 +187,8 @@ npm run test:e2e
 ```
 
 The browser suite signs up local test accounts and exercises owner/non-owner mutation requests, privacy, guest tracking, login continuity, Trash/Restore, comments, reactions, desktop/mobile layout, and analytics transport failure. `TEST_BROWSER_PATH` can optionally select an existing Chromium executable.
+
+Version-history regression tests additionally cover exact snapshots, no-op saves, concurrent/stale edits, atomic rollback, author-only list/preview/restore access, pagination, Trash retention and deletion cascades. Browser coverage checks preview/restore and feed refresh in both themes at desktop/mobile widths, forged restore forms, guest statistics requests, logout clearing and statistics failures. The migration suite checks the initial history backfill without changing existing story content or relationships.
 
 See [the implementation report](docs/implementation-report.md) for the full change list and validation results.
 

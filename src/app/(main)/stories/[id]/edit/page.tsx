@@ -17,7 +17,7 @@ export default async function EditStoryPage({
   const { id } = await params;
   const story = await prisma.story.findFirst({
     where: { id, authorId: session.user.id, deletedAt: null },
-    select: { id: true, authorId: true, title: true, content: true },
+    select: { id: true, authorId: true, title: true, content: true, currentVersion: true },
   });
 
   if (!story) {

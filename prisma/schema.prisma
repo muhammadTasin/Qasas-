@@ -43,14 +43,29 @@ model Story {
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
   publishKey       String?     @unique
+  currentVersion   Int         @default(1)
   author           User        @relation(fields: [authorId], references: [id])
   reactions        Reaction[]
   comments         Comment[]
   views            StoryView[]
+  versions         StoryVersion[]
 
   @@index([authorId])
   @@index([createdAt])
   @@index([deletedAt, createdAt])
+}
+
+model StoryVersion {
+  id                  String   @id @default(cuid())
+  storyId             String
+  version             Int
+  title               String
+  content             String
+  createdAt           DateTime @default(now())
+  restoredFromVersion Int?
+  story               Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, version])
 }
 
 model Reaction {
