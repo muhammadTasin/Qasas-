@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { anonymousSuffix, getGeoFromHeaders, getUaInfo, type VisitorIdentity } from "./analytics";
-import type { DeviceHints } from "./device-info";
+import { preferredModel, type DeviceHints } from "./device-info";
 import { withActiveStory } from "./story-mutations";
 
 export function trackingMetadata(headers: Headers, hints: DeviceHints, isAuthenticated: boolean) {
@@ -32,15 +32,20 @@ export async function recordSiteVisit(identity: VisitorIdentity, metadata: Track
   }, { maxWait: 2000, timeout: 4000 });
 }
 
-export async function recordStoryActivity(storyId: string, identity: VisitorIdentity, metadata: TrackingMetadata, seconds = 0) {
+export async function recordStoryActivity(storyId: string, identity: VisitorIdentity, metadata: TrackingMetadata, reader: { userId: string | null; deviceArchitecture?: string | null }, seconds = 0) {
   const where = identity.visitorId ? { storyId_visitorId: { storyId, visitorId: identity.visitorId } }
     : identity.ipHash ? { storyId_ipHash: { storyId, ipHash: identity.ipHash } } : null;
   if (!where) return;
   await withActiveStory(storyId, async tx => {
+    const data = { ...metadata, userId: reader.userId, isAuthenticated: Boolean(reader.userId), deviceArchitecture: reader.deviceArchitecture || undefined };
     const view = await tx.storyView.upsert({
-      where, create: { storyId, ...identity, ...metadata }, update: metadata,
-      select: { id: true, lastReadAt: true },
+      where, create: { storyId, ...identity, ...data }, update: { ...data, deviceModel: undefined },
+      select: { id: true, lastReadAt: true, deviceModel: true },
     });
+    // The upsert holds this row's lock until commit. A later request without
+    // entropy hints must not downgrade a previously exposed exact model.
+    const model = preferredModel(metadata.deviceModel, view.deviceModel);
+    if (model !== view.deviceModel) await tx.storyView.update({ where: { id: view.id }, data: { deviceModel: model } });
     if (!seconds) return;
     const now = new Date();
     const acceptedSeconds = Math.min(seconds, view.lastReadAt ? Math.floor((now.getTime() - view.lastReadAt.getTime()) / 1000) : seconds);

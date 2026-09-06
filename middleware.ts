@@ -16,7 +16,7 @@ export function middleware(request: NextRequest) {
       secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 365,
     });
   }
-  response.headers.set("Accept-CH", "Sec-CH-UA-Model, Sec-CH-UA-Platform");
+  response.headers.set("Accept-CH", "Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Arch");
   return response;
 }
 

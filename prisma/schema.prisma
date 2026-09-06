@@ -25,6 +25,7 @@ model User {
   stories      Story[]
   reactions    Reaction[]
   comments     Comment[]
+  storyViews   StoryView[]
 }
 
 model Story {
@@ -76,12 +77,14 @@ model Comment {
 model StoryView {
   id               String   @id @default(cuid())
   storyId          String
+  userId           String?
   visitorId        String?
   ipHash           String?
   userAgent        String?
   deviceType       String?
   deviceModel      String?
   devicePlatform   String?
+  deviceArchitecture String?
   isAuthenticated  Boolean?
   os               String?
   browser          String?
@@ -93,12 +96,15 @@ model StoryView {
   totalReadSeconds Int      @default(0)
   lastReadAt       DateTime?
   story            Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([storyId, visitorId])
   @@unique([storyId, ipHash])
   @@index([storyId])
   @@index([lastSeenAt])
   @@index([storyId, lastSeenAt])
+  @@index([storyId, userId, lastSeenAt])
+  @@index([userId])
 }
 
 model SiteVisitor {

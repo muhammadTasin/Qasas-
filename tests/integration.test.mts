@@ -44,17 +44,17 @@ test("publish retries and concurrent submissions create one row", async () => {
 });
 
 test("refresh and concurrent views deduplicate; login keeps the browser identity", async () => {
-  await Promise.all(Array.from({ length: 5 }, () => recordStoryActivity(storyId, visitor, metadata)));
+  await Promise.all(Array.from({ length: 5 }, () => recordStoryActivity(storyId, visitor, metadata, { userId: null })));
   const before = await prisma.storyView.findFirstOrThrow({ where: { storyId } });
-  await recordStoryActivity(storyId, visitor, { ...metadata, isAuthenticated: true });
+  await recordStoryActivity(storyId, visitor, { ...metadata, isAuthenticated: true }, { userId: owner });
   assert.equal(await prisma.storyView.count({ where: { storyId } }), 1);
   const current = await prisma.storyView.findFirstOrThrow({ where: { storyId } });
   assert.equal(current.id, before.id);
   assert.equal(current.firstSeenAt.getTime(), before.firstSeenAt.getTime());
   assert.ok(current.lastSeenAt >= before.lastSeenAt);
   assert.equal(current.isAuthenticated, true);
-  await recordStoryActivity(storyId, visitor2, metadata);
-  const insights = await getStoryInsights(storyId);
+  await recordStoryActivity(storyId, visitor2, metadata, { userId: null });
+  const insights = await getStoryInsights(storyId, owner);
   assert.equal(insights.uniqueViewsCount, 2);
   assert.equal(insights.loggedIn, 1);
   assert.equal(insights.guests, 1);
@@ -66,7 +66,7 @@ test("refresh and concurrent views deduplicate; login keeps the browser identity
 });
 
 test("database read-time gate rejects concurrent duplicate increments", async () => {
-  await Promise.all(Array.from({ length: 5 }, () => recordStoryActivity(storyId, visitor, metadata, 15)));
+  await Promise.all(Array.from({ length: 5 }, () => recordStoryActivity(storyId, visitor, metadata, { userId: null }, 15)));
   const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId } });
   const view = await prisma.storyView.findUniqueOrThrow({ where: { storyId_visitorId: { storyId, visitorId: visitor.visitorId } } });
   assert.equal(story.totalReadSeconds, 15);
@@ -109,8 +109,8 @@ test("soft delete survives client reconnect; Restore preserves all data and owne
   assert.equal(await prisma.story.findFirst({ where: { id: storyId, deletedAt: null } }), null);
   await assert.rejects(restoreStory(stranger, storyId));
   await assert.rejects(editStory(owner, storyId, { title: "Deleted", content: "Must not edit a deleted story fixture." }));
-  await assert.rejects(recordStoryActivity(storyId, visitor, metadata));
-  await assert.rejects(recordStoryActivity(storyId, visitor, metadata, 15));
+  await assert.rejects(recordStoryActivity(storyId, visitor, metadata, { userId: null }));
+  await assert.rejects(recordStoryActivity(storyId, visitor, metadata, { userId: null }, 15));
   await assert.rejects(withActiveStory(storyId, tx => tx.comment.create({ data: { storyId, userId: owner, body: "Must fail" } })));
   await assert.rejects(withActiveStory(storyId, tx => tx.reaction.updateMany({ where: { storyId }, data: { type: "ANGRY" } })));
   await restoreStory(owner, storyId);

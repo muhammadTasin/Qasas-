@@ -8,7 +8,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const id = z.string().min(1).max(128).parse((await context.params).id);
     const body = readTimeSchema.parse(await readTrackingBody(request));
     const visitor = await trackingContext(request, body.hints, `read:${id}`);
-    if (visitor) await recordStoryActivity(id, visitor.identity, visitor.metadata, body.seconds);
+    if (visitor) await recordStoryActivity(id, visitor.identity, visitor.metadata, visitor.reader, body.seconds);
     return new NextResponse(null, { status: 204 });
   } catch (error) { return trackingError(error); }
 }

@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { UAParser } from "ua-parser-js";
-import { deviceLabel, normalizeModel, normalizeText, type DeviceHints } from "./device-info";
+import { browserBrand, deviceLabel, normalizePlatform, preferredModel, normalizeText, type DeviceHints } from "./device-info";
+import { iso31662 } from "iso-3166";
 
 export type GeoInfo = { country: string | null; region: string | null; city: string | null };
 export type VisitorIdentity = { visitorId: string | null; ipHash: string | null };
@@ -44,7 +45,7 @@ export function getUaInfo(headers: Headers, hints: DeviceHints = {}) {
   const userAgent = normalizeText(headers.get("user-agent"), 1024);
   const parser = new UAParser(userAgent || "");
   const device = parser.getDevice();
-  const devicePlatform = normalizeText(headers.get("sec-ch-ua-platform")) || normalizeText(hints.platform) || parser.getOS().name || null;
+  const devicePlatform = normalizePlatform(headers.get("sec-ch-ua-platform")) || normalizePlatform(hints.platform) || normalizePlatform(parser.getOS().name) || normalizePlatform(hints.legacyPlatform);
   const mobile = headers.get("sec-ch-ua-mobile") === "?1" || hints.mobile === true;
   const deviceType = device.type || (mobile ? "mobile" : userAgent || devicePlatform ? "desktop" : null);
   // Only keep a parser model when it is actually present in the request's UA.
@@ -53,8 +54,15 @@ export function getUaInfo(headers: Headers, hints: DeviceHints = {}) {
   const androidModel = /android/i.test(devicePlatform || "")
     ? userAgent?.match(/Android [^;()]+;\s*(?:[a-z]{2}(?:[-_][a-z]{2})?;\s*)?([^;()]+?)(?:\s+Build\/[^)]*|\))/i)?.[1]
     : null;
-  const deviceModel = normalizeModel(headers.get("sec-ch-ua-model")) || normalizeModel(hints.model) || normalizeModel(parsedModel) || normalizeModel(androidModel);
-  return { userAgent, deviceType, deviceModel, devicePlatform, os: parser.getOS().name || devicePlatform, browser: parser.getBrowser().name || null };
+  const deviceModel = preferredModel(headers.get("sec-ch-ua-model"), hints.model, parsedModel, androidModel);
+  const brands = [...(headers.get("sec-ch-ua") || "").matchAll(/"([^"]+)"\s*;\s*v="[^"]+"/g)].map(match => match[1]);
+  return { userAgent, deviceType, deviceModel, devicePlatform, os: normalizePlatform(parser.getOS().name) || devicePlatform,
+    browser: browserBrand(brands) || normalizeText(hints.browser) || parser.getBrowser().name || null };
+}
+
+export function getArchitecture(headers: Headers, hints: DeviceHints = {}) {
+  return normalizeText(headers.get("sec-ch-ua-arch")) || normalizeText(hints.architecture)
+    || normalizeText(new UAParser(normalizeText(headers.get("user-agent"), 1024) || "").getCPU().architecture);
 }
 
 export function computeIpHash(ip: string, userAgent: string | null): string {
@@ -76,13 +84,21 @@ export function anonymousSuffix(identity: VisitorIdentity & { id?: string }): st
 }
 
 export function visitorLabel(info: VisitorIdentity & { id?: string; deviceModel?: string | null; devicePlatform?: string | null; os?: string | null; deviceType?: string | null }) {
-  return `${deviceLabel(info)}_unique_${anonymousSuffix(info)}`;
+  return `${deviceLabel(info).replaceAll(" ", "-")}_unique_${anonymousSuffix(info)}`;
 }
 
+const subdivisionNames = new Map(iso31662.map(region => [region.code, region.name]));
+
 export function approximateLocation(geo: GeoInfo): string {
-  let country = geo.country;
+  let country = normalizeText(geo.country);
+  let region = normalizeText(geo.region);
+  const city = normalizeText(geo.city);
+  if (country && region) {
+    const code = region.toUpperCase().startsWith(`${country.toUpperCase()}-`) ? region.toUpperCase() : `${country.toUpperCase()}-${region.toUpperCase()}`;
+    region = subdivisionNames.get(code) || (/^[A-Z0-9-]{1,6}$/i.test(region) ? `Region ${region}` : region);
+  }
   if (country && /^[a-z]{2}$/i.test(country)) {
     country = new Intl.DisplayNames(["en"], { type: "region" }).of(country.toUpperCase()) || country;
   }
-  return [...new Set([geo.city, geo.region, country].filter(Boolean))].join(", ") || "Location unavailable";
+  return [city, region, country].filter((value, index, values) => value && values.findIndex(candidate => candidate?.toLowerCase() === value.toLowerCase()) === index).join(", ") || "Location unavailable";
 }

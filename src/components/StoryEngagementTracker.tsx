@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { getClientHints, recentlyTracked, sendAnalytics } from "@/lib/analytics-client";
+import { getAvailableClientHints, getClientHints, recentlyTracked, sendAnalytics } from "@/lib/analytics-client";
 import type { DeviceHints } from "@/lib/device-info";
 
 const SEND_INTERVAL_SECONDS = 15;
@@ -33,7 +33,7 @@ export default function StoryEngagementTracker({ storyId }: { storyId: string })
       if (seconds < 1) return;
       accumulated -= seconds;
       totalSent += seconds;
-      sendAnalytics(`/api/stories/${storyId}/readtime`, { seconds, hints }, beacon);
+      sendAnalytics(`/api/stories/${storyId}/readtime`, { seconds, hints: { ...hints, ...getAvailableClientHints() } }, beacon);
     };
     const visibilityChanged = () => {
       if (document.visibilityState === "hidden") flush(true);

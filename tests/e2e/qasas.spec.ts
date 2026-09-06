@@ -347,3 +347,100 @@ test("Google callback sessions keep existing stories and owner controls in both 
     await expect(googlePage).toHaveURL("http://localhost:3000/");
   } finally { await context.close(); }
 });
+
+test("reader identities stay owner-only, spoofed user IDs are ignored, and late exact hardware hints reach Insights", async ({ page, browser }) => {
+  const ownerEmail = await signupAndLogin(page);
+  const storyId = await publish(page, "Insights v2 privacy fixture");
+  const owner = await prisma.user.findUniqueOrThrow({ where: { email: ownerEmail } });
+  const guestContext = await browser.newContext({ extraHTTPHeaders: {
+    "sec-ch-ua-platform": '"Linux"', "sec-ch-ua-model": '""',
+    "x-vercel-ip-city": "Kushtia", "x-vercel-ip-country-region": "D", "x-vercel-ip-country": "BD",
+  } });
+  const readerContext = await browser.newContext();
+  const secondDevice = await browser.newContext();
+  try {
+    await guestContext.addInitScript(() => {
+      const state = window as unknown as { requestedHints: string[]; geoCalls: number };
+      state.geoCalls = 0;
+      Object.defineProperty(navigator, "userAgentData", { value: {
+        platform: "Linux", mobile: false, brands: [{ brand: "Google Chrome", version: "130" }],
+        getHighEntropyValues: async (keys: string[]) => {
+          state.requestedHints = keys;
+          await new Promise(resolve => setTimeout(resolve, 400));
+          return { model: "Acer Predator PHN16-71", platform: "Linux", architecture: "x86" };
+        },
+      } });
+      Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition: () => { state.geoCalls++; }, watchPosition: () => { state.geoCalls++; } } });
+    });
+    const guest = await viewStory(guestContext, storyId);
+    const guestId = (await guestContext.cookies()).find(cookie => cookie.name === "visitorId")!.value;
+    // The first view can proceed before high-entropy hints resolve. The next
+    // existing read-time batch must preserve the exact late model, not a fallback.
+    await expect.poll(async () => (await prisma.storyView.findUnique({ where: { storyId_visitorId: { storyId, visitorId: guestId } } }))?.deviceModel, { timeout: 22000 }).toBe("Acer Predator PHN16-71");
+    expect(await guest.evaluate(() => (window as unknown as { requestedHints: string[] }).requestedHints)).toEqual(["model", "platform", "architecture"]);
+    expect(await guest.evaluate(() => (window as unknown as { geoCalls: number }).geoCalls)).toBe(0);
+    const anonymous = await prisma.storyView.findUniqueOrThrow({ where: { storyId_visitorId: { storyId, visitorId: guestId } } });
+    expect(anonymous.userId).toBeNull(); expect(anonymous.isAuthenticated).toBe(false);
+    expect(anonymous.totalReadSeconds).toBeGreaterThan(0);
+
+    const forgedGuest = randomUUID();
+    await guestContext.addCookies([{ name: "visitorId", value: forgedGuest, url: "http://localhost:3000" }]);
+    expect((await guest.request.post(`/api/stories/${storyId}/view`, { data: { userId: owner.id, isAuthenticated: true } })).status()).toBe(204);
+    const untrusted = await prisma.storyView.findUniqueOrThrow({ where: { storyId_visitorId: { storyId, visitorId: forgedGuest } } });
+    expect(untrusted.userId).toBeNull(); expect(untrusted.isAuthenticated).toBe(false);
+    expect((await guest.request.get(`/api/stories/${storyId}/insights`)).status()).toBe(401);
+
+    const readerPage = await readerContext.newPage();
+    const readerEmail = await signupAndLogin(readerPage);
+    const reader = await prisma.user.update({ where: { email: readerEmail }, data: { name: "Named reader from User record" } });
+    expect((await readerPage.request.post(`/api/stories/${storyId}/view`, { data: { userId: owner.id, isAuthenticated: false, hints: { model: "SM-A546E", platform: "Android", mobile: true } } })).status()).toBe(204);
+    const readerCookie = (await readerContext.cookies()).find(cookie => cookie.name === "visitorId")!.value;
+    const recorded = await prisma.storyView.findUniqueOrThrow({ where: { storyId_visitorId: { storyId, visitorId: readerCookie } } });
+    expect(recorded.userId).toBe(reader.id); expect(recorded.isAuthenticated).toBe(true);
+    expect((await readerPage.request.get(`/api/stories/${storyId}/insights`)).status()).toBe(404);
+    await readerPage.goto(`/stories/${storyId}/insights`);
+    await expect(readerPage.getByText("Named reader from User record", { exact: true })).toHaveCount(0);
+
+    const before = await (await page.request.get(`/api/stories/${storyId}/insights`)).json();
+    const nameRow = before.viewers.find((view: { displayName: string | null }) => view.displayName === reader.name);
+    expect(nameRow).toBeTruthy(); expect(nameRow.visitorKind).toBe("Logged in");
+    const modelRow = before.viewers.find((view: { deviceModel: string }) => view.deviceModel === "Acer Predator PHN16-71");
+    expect(modelRow.approximateLocation).toBe("Kushtia, Khulna, Bangladesh");
+    expect(modelRow.architecture).toBe("x86");
+    for (const value of [reader.id, reader.email, owner.id, guestId, forgedGuest, recorded.id, recorded.userAgent]) if (value) expect(JSON.stringify(before)).not.toContain(value);
+    for (const row of before.viewers) for (const key of ["email", "userId", "visitorId", "ipHash", "userAgent", "access_token", "providerAccountId"]) expect(row).not.toHaveProperty(key);
+
+    await secondDevice.addCookies((await readerContext.cookies()).filter(cookie => cookie.name.includes("session-token")));
+    await secondDevice.addCookies([{ name: "visitorId", value: randomUUID(), url: "http://localhost:3000" }]);
+    const otherPage = await secondDevice.newPage();
+    expect((await otherPage.request.post(`/api/stories/${storyId}/view`, { data: {} })).status()).toBe(204);
+    const after = await (await page.request.get(`/api/stories/${storyId}/insights`)).json();
+    expect(after.loggedIn).toBe(before.loggedIn); expect(after.uniqueViewsCount).toBe(before.uniqueViewsCount);
+    expect(Object.values(after.devices).reduce((sum, count) => Number(sum) + Number(count), 0)).toBe(after.uniqueViewsCount);
+
+    for (const theme of ["qasas", "journal"]) {
+      await page.context().addCookies([{ name: "qasas-theme", value: theme, url: "http://localhost:3000" }]);
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.goto(`/stories/${storyId}`);
+        const launcher = page.getByRole("button", { name: "Insights", exact: true });
+        await launcher.click();
+        const dialog = page.getByRole("dialog");
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole("heading", { name: "Named reader from User record", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("heading", { name: /Guest readers/ })).toBeVisible();
+        await expect(dialog.getByText("Mobile", { exact: true })).toHaveCount(0);
+        expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+        await dialog.getByText("Devices", { exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: `/tmp/qasas-insights-v2/${theme}-${width}.png` });
+        await dialog.getByRole("button", { name: "Close Insights" }).focus();
+        await page.keyboard.press("Tab");
+        await expect(dialog.getByRole("button", { name: "Close Insights" })).toBeFocused();
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0); await expect(launcher).toBeFocused();
+      }
+    }
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page).toHaveURL("http://localhost:3000/");
+  } finally { await Promise.all([guestContext.close(), readerContext.close(), secondDevice.close()]); }
+});
