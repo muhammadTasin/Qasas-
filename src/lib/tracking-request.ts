@@ -50,7 +50,10 @@ export async function trackingContext(request: Request, hints: z.infer<typeof hi
   if (!identity.visitorId && !identity.ipHash) return null;
   const session = await getSession();
   const userId = session?.user?.id || null;
-  if (locallyThrottled(`${scope}:${identity.visitorId || identity.ipHash}:${userId || "guest"}`)) return null;
+  // Site identity reconciliation must run even during rapid account switches.
+  // Its database event gate already works across instances. Story gates retain
+  // their existing behavior.
+  if (scope !== "site" && locallyThrottled(`${scope}:${identity.visitorId || identity.ipHash}:${userId || "guest"}`)) return null;
   return {
     identity, metadata: trackingMetadata(request.headers, hints || {}, Boolean(userId)),
     reader: { userId, deviceArchitecture: getArchitecture(request.headers, hints) },

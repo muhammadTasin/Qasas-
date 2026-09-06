@@ -340,7 +340,11 @@ test("Google callback sessions keep existing stories and owner controls in both 
       await expect(googlePage.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
       expect((await googlePage.request.get(`/api/stories/${storyId}/insights`)).status()).toBe(200);
     }
-    expect(await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).toEqual(owner);
+    const currentOwner = await prisma.user.findUniqueOrThrow({ where: { id: owner.id } });
+    // Only the new site-analytics marker may advance during page visits. Auth,
+    // profile fields, password, original timestamps and User.id must stay exact.
+    expect(currentOwner).toEqual({ ...owner, siteLastSeenAt: expect.any(Date) });
+    expect(currentOwner.siteLastSeenAt!.getTime()).toBeGreaterThanOrEqual(owner.siteLastSeenAt?.getTime() || 0);
     expect(await prisma.story.findUniqueOrThrow({ where: { id: storyId } })).toMatchObject({ id: before.id, authorId: before.authorId, title: before.title, content: before.content, createdAt: before.createdAt });
     expect(await prisma.user.count({ where: { email } })).toBe(1);
     await googlePage.getByRole("button", { name: "Delete", exact: true }).click();

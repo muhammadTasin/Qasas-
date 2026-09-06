@@ -26,6 +26,11 @@ model User {
   reactions    Reaction[]
   comments     Comment[]
   storyViews   StoryView[]
+  siteVisitors SiteVisitor[]
+  // Last server-authenticated site visit, retained across browser/account switches.
+  siteLastSeenAt DateTime?
+
+  @@index([siteLastSeenAt])
 }
 
 model Story {
@@ -109,6 +114,9 @@ model StoryView {
 
 model SiteVisitor {
   id          String   @id @default(cuid())
+  // Last authenticated account for counting only; retained after logout.
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   visitorId   String?
   ipHash      String?
   userAgent   String?
@@ -129,6 +137,7 @@ model SiteVisitor {
   @@unique([ipHash])
   @@index([lastSeenAt])
   @@index([firstSeenAt])
+  @@index([userId, lastSeenAt])
 }
 
 model SiteVisitEvent {

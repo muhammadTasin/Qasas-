@@ -74,12 +74,12 @@ test("database read-time gate rejects concurrent duplicate increments", async ()
 });
 
 test("route events are coalesced in PostgreSQL and retain guest/login metadata", async () => {
-  await Promise.all(Array.from({ length: 5 }, () => recordSiteVisit(visitor, metadata, "/")));
+  await Promise.all(Array.from({ length: 5 }, () => recordSiteVisit(visitor, metadata, "/", null)));
   const { anonymousSuffix } = await import("../src/lib/analytics");
   const where = { visitorId: anonymousSuffix(visitor) };
   assert.equal(await prisma.siteVisitEvent.count({ where }), 1);
   // A real authentication transition is retained even inside the event gate.
-  await recordSiteVisit(visitor, { ...metadata, isAuthenticated: true }, `/stories/${storyId}`);
+  await recordSiteVisit(visitor, { ...metadata, isAuthenticated: true }, `/stories/${storyId}`, owner);
   const events = await prisma.siteVisitEvent.findMany({ where, orderBy: { createdAt: "asc" } });
   assert.deepEqual(events.map(event => event.isAuthenticated), [false, true]);
   assert.deepEqual(events.map(event => event.pathname), ["/", `/stories/${storyId}`]);
