@@ -243,7 +243,7 @@ test("mobile browser: existing homepage styling remains usable without private t
   await context.close();
 });
 
-test("themes persist before hydration, preserve original Light geometry and support reset navigation", async ({ browser }) => {
+test("themes persist before hydration and preserve original Light geometry and sign-in", async ({ browser }) => {
   for (const width of [390, 768, 1440]) {
     const context = await browser.newContext({ viewport: { width, height: 1000 } });
     const page = await context.newPage();
@@ -264,11 +264,11 @@ test("themes persist before hydration, preserve original Light geometry and supp
     await page.screenshot({ path: `/tmp/qasas-ui-restore/journal-home-${width}.png`, fullPage: true });
     await page.goto("/signin");
     await page.screenshot({ path: `/tmp/qasas-ui-restore/journal-signin-${width}.png`, fullPage: true });
-    await page.getByRole("link", { name: "Forgot password?" }).click();
-    await expect(page).toHaveURL(/\/forgot-password$/);
-    await page.getByLabel("Email", { exact: true }).fill(`missing-${randomUUID()}@example.invalid`);
-    await page.getByRole("button", { name: "Send reset link" }).click();
-    await expect(page.getByRole("status")).toHaveText("If an account exists for this email, a reset link has been sent.");
+    await expect(page.getByRole("link", { name: /forgot password/i })).toHaveCount(0);
+    await expect(page.getByRole("main").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+      await expect(page.getByRole("button", { name: "Continue with Google", exact: true })).toBeVisible();
+    }
     await page.goto("/"); await toggle.click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "qasas");
     const restoredNav = await page.getByRole("navigation", { name: width < 640 ? "Mobile navigation" : "Main navigation" }).boundingBox();
@@ -287,28 +287,63 @@ test("themes persist before hydration, preserve original Light geometry and supp
   await context.close();
 });
 
-test("password reset form consumes a hashed one-time link and invalidates old sessions", async ({ page, browser }) => {
+test("removed password-reset routes return 404 and sign-in has no reset prompts", async ({ page }) => {
+  for (const path of ["/forgot-password", "/reset-password"]) {
+    expect((await page.request.get(path)).status()).toBe(404);
+    expect((await page.request.post(path, { form: { email: "missing@example.invalid", password: "unused-password" } })).status()).toBe(404);
+  }
+  await page.goto("/signin?reset=success&error=OAuthSignin");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("Please try again");
+  await expect(page.getByText(/reset|forgot password/i)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /create one/i })).toBeVisible();
+});
+
+test("Google callback sessions keep existing stories and owner controls in both themes", async ({ page, browser }) => {
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    const providers = await (await page.request.get("/api/auth/providers")).json();
+    expect(providers.google.id).toBe("google");
+    await page.goto("/signup");
+    await expect(page.getByRole("button", { name: "Continue with Google", exact: true })).toBeVisible();
+  }
   const email = await signupAndLogin(page);
+  const storyId = await publish(page, "Owned before Google sign-in");
   const owner = await prisma.user.findUniqueOrThrow({ where: { email } });
-  const { randomBytes, createHash } = await import("node:crypto");
-  const token = randomBytes(32).toString("hex");
-  await prisma.passwordResetToken.create({ data: { userId: owner.id, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 30 * 60 * 1000) } });
-  const resetContext = await browser.newContext(); const reset = await resetContext.newPage();
-  await reset.goto(`/reset-password#token=${token}`);
-  await reset.getByLabel("New password", { exact: true }).fill("changed-local-test-password");
-  await reset.getByLabel("Confirm password").fill("changed-local-test-password");
-  await reset.getByRole("button", { name: "Reset password", exact: true }).click();
-  await expect(reset).toHaveURL(/\/signin\?reset=success$/);
-  expect(await prisma.passwordResetToken.count({ where: { userId: owner.id } })).toBe(0);
-  expect((await page.request.get("/api/site/stats")).status()).toBe(401);
-  await reset.getByLabel("Email", { exact: true }).fill(email);
-  await reset.getByLabel("Password", { exact: true }).fill("changed-local-test-password");
-  await reset.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(reset).toHaveURL("http://localhost:3000/");
-  await reset.goto(`/reset-password#token=${token}`);
-  await reset.getByLabel("New password", { exact: true }).fill("another-local-test-password");
-  await reset.getByLabel("Confirm password").fill("another-local-test-password");
-  await reset.getByRole("button", { name: "Reset password", exact: true }).click();
-  await expect(reset.getByRole("status")).toContainText("invalid or expired");
-  await resetContext.close();
+  const before = await prisma.story.findUniqueOrThrow({ where: { id: storyId } });
+  process.env.DATABASE_URL = dbUrl;
+  process.env.DIRECT_URL = dbUrl;
+  const { authOptions } = await import("../../src/lib/auth");
+  const { encode } = await import("next-auth/jwt");
+  const subject = randomUUID();
+  const user = { id: subject, email, name: "Google display name" };
+  const account = { provider: "google", providerAccountId: subject, type: "oauth" as const };
+  const profile = { sub: subject, email, name: user.name, email_verified: true };
+  // Feed a synthetic verified Google result through the real callbacks, then
+  // exercise its signed session against the running app. No external OAuth call.
+  expect(await authOptions.callbacks!.signIn!({ user, account, profile })).toBe(true);
+  const token = await authOptions.callbacks!.jwt!({ token: {}, user, account, profile, trigger: "signIn" });
+  expect(token.sub).toBe(owner.id);
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) throw new Error("Browser verification requires the local server's NEXTAUTH_SECRET.");
+  const sessionToken = await encode({ token, secret });
+  const context = await browser.newContext();
+  try {
+    await context.addCookies([{ name: "next-auth.session-token", value: sessionToken, url: "http://localhost:3000", httpOnly: true, sameSite: "Lax" }]);
+    const googlePage = await context.newPage();
+    expect((await (await googlePage.request.get("/api/auth/session")).json()).user.id).toBe(owner.id);
+    for (const theme of ["qasas", "journal"]) {
+      await context.addCookies([{ name: "qasas-theme", value: theme, url: "http://localhost:3000" }]);
+      await googlePage.goto("/me");
+      await expect(googlePage.getByRole("heading", { name: "Owned before Google sign-in", exact: true })).toBeVisible();
+      await expect(googlePage.getByRole("link", { name: "View", exact: true })).toHaveAttribute("href", `/stories/${storyId}`);
+      await googlePage.goto(`/stories/${storyId}`);
+      await expect(googlePage.getByRole("link", { name: "Edit", exact: true })).toBeVisible();
+      await expect(googlePage.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+      expect((await googlePage.request.get(`/api/stories/${storyId}/insights`)).status()).toBe(200);
+    }
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: owner.id } })).toEqual(owner);
+    expect(await prisma.story.findUniqueOrThrow({ where: { id: storyId } })).toMatchObject({ id: before.id, authorId: before.authorId, title: before.title, content: before.content, createdAt: before.createdAt });
+    expect(await prisma.user.count({ where: { email } })).toBe(1);
+    await googlePage.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(googlePage).toHaveURL("http://localhost:3000/");
+  } finally { await context.close(); }
 });

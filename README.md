@@ -123,7 +123,7 @@ npm run lint
 npm run build
 ```
 
-Run `prisma migrate deploy` against the intended database **before** serving the updated application. The new migration only adds nullable columns and indexes; it preserves existing records. Do not use `migrate reset`, `db push --force-reset`, or destructive SQL. No deployment is performed by these commands. Deploy the verified commit through your usual Vercel workflow afterward. The build script regenerates Prisma Client so cached dependencies cannot leave it behind the schema.
+Run `prisma migrate deploy` against the intended database **before** serving the updated application. The pending migrations add compatibility tables, nullable columns and indexes and permit NULL password hashes; they preserve existing records. Do not use `migrate reset`, `db push --force-reset`, or destructive SQL. No deployment is performed by these commands. Deploy the verified commit through your usual Vercel workflow afterward. The build script regenerates Prisma Client so cached dependencies cannot leave it behind the schema.
 
 For Supabase/Vercel, use the provider's transaction-pooler URL for `DATABASE_URL` (with the connection options required by your provider, such as `pgbouncer=true`) and a migration-capable direct or session-pooler URL for `DIRECT_URL`. Start with a small per-instance connection limit appropriate to your database plan; avoid a large default pool on every serverless instance. Prisma is reused within the warm process and is not disconnected after each request.
 
@@ -166,7 +166,7 @@ For browser tests, configure `.env` with that same isolated test database, a tes
 npx playwright install chromium
 npm run build
 npm run start
-# In a second terminal with TEST_DATABASE_URL exported:
+# In a second terminal with TEST_DATABASE_URL and the same NEXTAUTH_SECRET exported:
 npm run test:e2e
 ```
 
@@ -208,26 +208,16 @@ The default presentation now restores the polished deployment at https://qasas-w
 
 The small moon/sun control switches between Original Qasas and Journal. A validated `qasas-theme` cookie is read during server rendering, so the selected theme is already in the first HTML response. The preference is also written to localStorage. No theme database fields, separate routes, duplicate data fetching or theme library are needed. Journal is based on the supplied black editorial reference; its Stitch project requires Google access and was not accessible to the verification browser. Existing stories have no cover field, so cards remain text-only rather than attaching invented images to stories.
 
-## Password reset and existing Google accounts
+## Existing Google accounts
 
-Forgot password is available from `/signin` in both themes. Requests always return the same generic message. Work is scheduled with Next.js `after()` so account lookup and email delivery do not change the visible response timing. Configure these **server-only** variables before enabling delivery:
+Google sign-in remains available alongside email/password sign-in when both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured. Use the existing client configuration and stable `NEXTAUTH_SECRET`. Set Google's authorized redirect URI to `NEXTAUTH_URL` followed by `/api/auth/callback/google`.
 
-| Variable | Purpose |
-| --- | --- |
-| `RESEND_API_KEY` | API key from Resend, with permission to send email. |
-| `PASSWORD_RESET_FROM` | A sender address on your verified Resend domain. |
-| `NEXTAUTH_URL` | Existing canonical application origin, HTTPS in production. Reset URLs are derived only from this setting, never request Host headers. |
-| `NEXTAUTH_SECRET` | Existing stable auth secret, also used to hash rate-limit subjects. |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional existing Google OAuth configuration. When both are present, the original Google button/provider is available alongside credentials. |
+Google callbacks require a verified email and a subject matching the authenticated provider account. An existing Google `Account` link always retains its original Qasas `User`. If no link exists, a matching email connects Google to the existing user without changing their ID, name, password hash, or story ownership. A new email creates a Google-only user with no credentials password. Atomic writes and retries handle concurrent sign-ins without duplicate users or orphan records.
 
-Resend requires a verified sender/domain ([sending API](https://resend.com/docs/api-reference/emails/send-email)). This implementation uses native `fetch`; no email SDK or template library was added. Set the Google authorized redirect URI to your configured application origin followed by `/api/auth/callback/google`. Retain the existing `NEXTAUTH_SECRET` and original Google client configuration when continuing an existing deployment.
+Password reset has been removed: there are no reset forms, routes, server actions, email delivery, reset tables, or session-version tracking. No email-provider configuration is required.
 
-Reset tokens contain 32 cryptographically random bytes. Only SHA-256 digests are stored, with 30-minute expiry and one active token per account. Successful consumption and password update occur in one transaction; concurrent reuse cannot succeed. Passwords use the existing bcrypt cost of 12 and respect bcrypt's 72-byte input limit. A session version increments on reset so previously issued JWT sessions lose access on their next authenticated request. Tokens travel in the email link's URL fragment, which is absent from request URLs/referrer headers, and are submitted only in the reset form body. Used tokens are deleted; expired tokens are rejected and cleaned during subsequent requests. Failed email delivery removes its pending token and logs no email address or token.
+The new, not yet deployed migration is `20260906120000_google_auth_compatibility`. It permits NULL password hashes and creates the original `Account` table only if absent, preserving existing users, passwords, provider links and stories. The already applied `20260905180000_private_analytics_and_story_trash` migration is unchanged. Apply pending migrations only when deployment is separately authorized.
 
-Database-backed limits apply equally to registered and unknown email addresses: one request per email per minute and ten per network per hour. Subjects are HMAC hashes rather than stored email/IP addresses. Platform rate limiting is still appropriate for distributed abuse. Responses follow the [OWASP password-reset guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html).
+The authentication regression suite checks verified email linking, unchanged credentials and story relationships, legacy Google accounts, rejected unverified profiles and concurrent callbacks. Browser tests use a synthetic verified Google result through the real authentication callbacks and signed session to verify access to existing stories in both themes. They do not contact Google's external OAuth service. Export the same local `NEXTAUTH_SECRET` used by the test server when running that suite.
 
-Apply the **new** migration `20260906120000_password_reset_and_auth_compatibility` before serving this version, using `npx prisma migrate deploy`. It adds reset-token and rate-limit tables, a session-version column, and an `Account` table only if it is absent. It also permits NULL password hashes for the original Google-only accounts, without changing existing hashes or removing any columns. Existing Google Account links are reused and are never relinked just because an email matches another account. Prisma tolerates a missing password hash on legacy Google users; newly created accounts still supply a bcrypt hash. The already applied `20260905180000_private_analytics_and_story_trash` migration is unchanged. No existing columns or account/story/analytics data are removed.
-
-Without email configuration, the request page still returns the required generic response, but no email can be delivered. Delivery configuration failures are reported only in server logs. Local tests exercise the mail adapter with synthetic recipients and an injected capture transport; no real reset emails or production password changes are performed during verification.
-
-See [the UI restoration report](docs/ui-restoration-report.md) for the exact files, comparison measurements, screenshots and validation results.
+See [the UI restoration report](docs/ui-restoration-report.md) for the changed files, comparison measurements, screenshots and validation results.
