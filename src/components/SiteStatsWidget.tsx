@@ -1,11 +1,8 @@
 "use client";
-
+import { Globe } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-
 type Stats = { uniqueVisitorsLifetime: number; uniqueVisitorsLast30Days: number; totalVisits: number };
-const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
-
 export default function SiteStatsWidget() {
   const { status } = useSession();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -19,13 +16,9 @@ export default function SiteStatsWidget() {
     return () => controller.abort();
   }, [status]);
   if (status !== "authenticated" || !stats) return null;
-  return (
-    <div className="glass rounded-3xl px-4 py-3 text-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="badge bg-white/70">Unique visitors to Qasas: {formatNumber(stats.uniqueVisitorsLifetime)}</span>
-        <span className="badge bg-white/60">Last 30 days: {formatNumber(stats.uniqueVisitorsLast30Days)}</span>
-        <span className="badge bg-white/50">Total visits: {formatNumber(stats.totalVisits)}</span>
-      </div>
+  return <div className="flex items-center justify-center gap-2 mb-6">
+    <div className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-2 text-[10px] font-bold text-emerald-800 uppercase tracking-widest">
+      <Globe size={10} /><span>{new Intl.NumberFormat("en-US").format(stats.uniqueVisitorsLifetime)} Unique Voices</span>
     </div>
-  );
+  </div>;
 }

@@ -1,30 +1,59 @@
-import StoryCard from "@/components/StoryCard";
-import { getHomeStories } from "@/lib/story-data";
+import { getHomeStories } from '@/lib/story-data';
+import { getSession } from '@/lib/session';
+import StoryCard from '@/components/StoryCard';
+import Link from 'next/link';
+import { Feather } from 'lucide-react';
 
-export default async function HomePage() {
-  const stories = await getHomeStories();
-
+export default async function Home() {
+  const [stories, session] = await Promise.all([getHomeStories(), getSession()]);
+  const isAuthenticated = !!session?.user?.id;
   return (
-    <div className="space-y-8">
-      <section className="glass rounded-[32px] px-8 py-10">
-        <p className="text-xs uppercase tracking-[0.4em] text-muted">Qasas</p>
-        <h1 className="mt-3 text-4xl leading-tight">
-          Stories that feel like whispered letters.
-        </h1>
-        <p className="mt-4 max-w-2xl text-base text-muted">
-          This website is made to share your thoughts, like moner onnotshobder kotha.
-        </p>
+    <div className="home-page max-w-5xl mx-auto pt-6 pb-20 px-4 sm:px-6">
+
+      {/* Hero Section */}
+      <section className="home-hero mb-24 relative mt-8 sm:mt-16 text-center">
+        <div className="relative z-10 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full liquid-glass text-emerald-800 mb-8 shadow-lg ring-1 ring-white/60">
+                <Feather size={24} strokeWidth={1.5} />
+            </div>
+
+            <h1 className="font-serif text-5xl sm:text-7xl font-bold text-ink-900 mb-6 leading-tight tracking-tight">
+              Qasas.
+            </h1>
+
+            <p className="font-serif text-xl sm:text-2xl text-ink-500 mb-10 leading-relaxed italic">
+              &quot;যেখানে শব্দরা কথা কয়, আর নিস্তব্ধতা পায় ভাষা&quot;
+            </p>
+
+            {!isAuthenticated && (
+                <Link href="/signin" className="inline-flex items-center px-8 py-3 bg-emerald-800 text-white rounded-full font-sans font-medium shadow-lg shadow-emerald-900/20 touch-spring hover:bg-emerald-900">
+                    Join the Circle
+                </Link>
+            )}
+        </div>
       </section>
 
-      <section className="grid gap-6 md:grid-cols-2">
-        {stories.length === 0 ? (
-          <div className="glass rounded-3xl px-6 py-8">
-            <p className="text-muted">No stories yet. Be the first to write one.</p>
-          </div>
-        ) : (
-          stories.map((story) => (
-            <StoryCard key={story.id} story={story} author={story.author} />
-          ))
+      {/* Feed */}
+      <section id="feed" className="space-y-12">
+        <div className="flex items-center gap-4">
+            <h2 className="font-sans text-xs font-bold uppercase tracking-widest text-emerald-800/60">Recent Stories</h2>
+            <div className="h-px bg-emerald-900/10 flex-1"></div>
+        </div>
+
+
+            <div className="story-grid grid grid-cols-1 md:grid-cols-2 gap-8">
+                {stories.map((story, i) => (
+                    <div key={story.id} className="animate-in fade-in slide-in-from-bottom-8" style={{ animationDelay: `${i * 100}ms` }}>
+                        <StoryCard story={story} />
+                    </div>
+                ))}
+            </div>
+
+
+        {stories.length === 0 && (
+            <div className="liquid-glass rounded-[2rem] p-16 text-center text-ink-400 font-serif italic border-dashed border-2 border-emerald-900/5">
+                <p>No stories yet. Be the first to break the silence.</p>
+            </div>
         )}
       </section>
     </div>

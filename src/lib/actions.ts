@@ -82,6 +82,8 @@ export async function reactToStoryAction(formData: FormData) {
     where: { storyId_userId: { storyId, userId: session.user.id } },
     create: { storyId, userId: session.user.id, type }, update: { type }, select: { id: true },
   }));
+  updateTag(STORY_LIST_TAG);
+  revalidatePath("/");
   revalidatePath(`/stories/${storyId}`);
 }
 

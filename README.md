@@ -123,7 +123,7 @@ npm run lint
 npm run build
 ```
 
-Run `prisma migrate deploy` against the intended database **before** serving the updated application. The new migration only adds nullable columns and indexes; it preserves existing records. Do not use `migrate reset`, `db push --force-reset`, or destructive SQL. No deployment is performed by these commands. Deploy the verified commit through your usual Vercel workflow afterward. The build script regenerates Prisma Client so cached dependencies cannot leave it behind the schema.
+Run `prisma migrate deploy` against the intended database **before** serving the updated application. The pending migrations add compatibility tables, nullable columns and indexes and permit NULL password hashes; they preserve existing records. Do not use `migrate reset`, `db push --force-reset`, or destructive SQL. No deployment is performed by these commands. Deploy the verified commit through your usual Vercel workflow afterward. The build script regenerates Prisma Client so cached dependencies cannot leave it behind the schema.
 
 For Supabase/Vercel, use the provider's transaction-pooler URL for `DATABASE_URL` (with the connection options required by your provider, such as `pgbouncer=true`) and a migration-capable direct or session-pooler URL for `DIRECT_URL`. Start with a small per-instance connection limit appropriate to your database plan; avoid a large default pool on every serverless instance. Prisma is reused within the warm process and is not disconnected after each request.
 
@@ -166,7 +166,7 @@ For browser tests, configure `.env` with that same isolated test database, a tes
 npx playwright install chromium
 npm run build
 npm run start
-# In a second terminal with TEST_DATABASE_URL exported:
+# In a second terminal with TEST_DATABASE_URL and the same NEXTAUTH_SECRET exported:
 npm run test:e2e
 ```
 
@@ -202,4 +202,22 @@ See [the implementation report](docs/implementation-report.md) for the full chan
 
 
 
+## Original Qasas and Journal themes
 
+The default presentation now restores the polished deployment at https://qasas-web.vercel.app/ from its original `qasas2` source in commit `f214445`. The previous implementation retained the simplified root repository UI; that was a different presentation. The restoration uses the existing routes, database, authenticated actions and analytics, not the old backend.
+
+The small moon/sun control switches between Original Qasas and Journal. A validated `qasas-theme` cookie is read during server rendering, so the selected theme is already in the first HTML response. The preference is also written to localStorage. No theme database fields, separate routes, duplicate data fetching or theme library are needed. Journal is based on the supplied black editorial reference; its Stitch project requires Google access and was not accessible to the verification browser. Existing stories have no cover field, so cards remain text-only rather than attaching invented images to stories.
+
+## Existing Google accounts
+
+Google sign-in remains available alongside email/password sign-in when both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured. Use the existing client configuration and stable `NEXTAUTH_SECRET`. Set Google's authorized redirect URI to `NEXTAUTH_URL` followed by `/api/auth/callback/google`.
+
+Google callbacks require a verified email and a subject matching the authenticated provider account. An existing Google `Account` link always retains its original Qasas `User`. If no link exists, a matching email connects Google to the existing user without changing their ID, name, password hash, or story ownership. A new email creates a Google-only user with no credentials password. Atomic writes and retries handle concurrent sign-ins without duplicate users or orphan records.
+
+Password reset has been removed: there are no reset forms, routes, server actions, email delivery, reset tables, or session-version tracking. No email-provider configuration is required.
+
+The new, not yet deployed migration is `20260906120000_google_auth_compatibility`. It permits NULL password hashes and creates the original `Account` table only if absent, preserving existing users, passwords, provider links and stories. The already applied `20260905180000_private_analytics_and_story_trash` migration is unchanged. Apply pending migrations only when deployment is separately authorized.
+
+The authentication regression suite checks verified email linking, unchanged credentials and story relationships, legacy Google accounts, rejected unverified profiles and concurrent callbacks. Browser tests use a synthetic verified Google result through the real authentication callbacks and signed session to verify access to existing stories in both themes. They do not contact Google's external OAuth service. Export the same local `NEXTAUTH_SECRET` used by the test server when running that suite.
+
+See [the UI restoration report](docs/ui-restoration-report.md) for the changed files, comparison measurements, screenshots and validation results.

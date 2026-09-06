@@ -1,5 +1,7 @@
 # Qasas implementation report
 
+Historical report for the first backend change. The current presentation work is documented in [the UI restoration report](ui-restoration-report.md).
+
 Implemented locally on `codex/performance-private-analytics`, based on `origin/main` commit `622f82a`. No commit was created, nothing was pushed, no website was deployed, and no production database was accessed. The repository UI is the source of truth, as requested; screenshot content was not recreated or hardcoded.
 
 The loading problems found in the source were an uncached homepage query, broad author/comment/reaction reads, three uncached visitor counts in every main-layout render, duplicated counts in the public API, repeated session decoding, and sequential story/session reads. Tracking also had an instance-local read-time limiter, synchronous dynamic-route parameter access incompatible with Next.js 16, session-only visitor cookies, and no runtime device-model collection. Insights exposed raw database records. Normal Delete permanently cascaded through related records and only invalidated `/me`; Edit did not invalidate the homepage.

@@ -1,0 +1,89 @@
+/* Optional Journal presentation. Original Qasas styles are untouched outside this selector. */
+.theme-sun { display: none; }
+html[data-theme="journal"] .theme-sun { display: block; }
+html[data-theme="journal"] .theme-moon { display: none; }
+html[data-theme="journal"] {
+  color-scheme: dark;
+  --journal-paper: #14140f;
+  --journal-surface: #10110d;
+  --journal-ink: #ede9d9;
+  --journal-muted: #b1aa94;
+  --journal-gold: #b69b61;
+  --journal-line: #3e392a;
+  --color-ink-900: var(--journal-ink);
+  --color-ink-800: var(--journal-ink);
+  --color-ink-700: var(--journal-ink);
+  --color-ink-600: var(--journal-muted);
+  --color-ink-500: var(--journal-muted);
+  --color-ink-400: #9b937d;
+  --color-emerald-900: #d4bd83;
+  --color-emerald-800: var(--journal-gold);
+  --color-emerald-700: #c8ac70;
+  --color-emerald-600: #c8ac70;
+  --color-emerald-500: #b69b61;
+  --color-emerald-300: #5d5136;
+  --color-emerald-200: #4a422f;
+  --color-emerald-100: #302c20;
+  --color-emerald-50: #22221a;
+  --color-white: #282820;
+  --color-rose-600: #e0978b;
+  --color-blue-800: #b9c7cb;
+  --color-blue-100: #344144;
+  --color-blue-50: #1e282b;
+}
+html[data-theme="journal"] body { background: var(--journal-paper); color: var(--journal-ink); }
+html[data-theme="journal"] .liquid-bg-wrapper { background: var(--journal-paper); }
+html[data-theme="journal"] .blob { display: none; }
+html[data-theme="journal"] .liquid-bg-wrapper::after {
+  content: ""; position: absolute; inset: 0; opacity: .025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23fff' filter='url(%23grain)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
+}
+html[data-theme="journal"] .liquid-glass,
+html[data-theme="journal"] .liquid-glass-heavy,
+html[data-theme="journal"] .reading-surface {
+  background: var(--journal-surface); border-color: var(--journal-line); box-shadow: none; backdrop-filter: none;
+}
+html[data-theme="journal"] :is(.bg-emerald-800,.hover\:bg-emerald-900:hover) { color: #17160e; }
+html[data-theme="journal"] [class*="shadow"] { --tw-shadow: 0 0 #0000; --tw-ring-shadow: 0 0 #0000; }
+html[data-theme="journal"] nav { border-radius: 0; background: transparent; border: 0; border-bottom: 1px solid var(--journal-line); }
+html[data-theme="journal"] nav a { border-radius: 0; }
+html[data-theme="journal"] .home-page { max-width: 1100px; }
+html[data-theme="journal"] .home-hero { margin-block: 7rem 8rem; }
+html[data-theme="journal"] .home-hero h1 { font-size: clamp(4rem, 8vw, 6.5rem); font-weight: 400; }
+html[data-theme="journal"] .home-hero > div > div { border: 0; background: none; color: var(--journal-gold); }
+html[data-theme="journal"] .home-hero p { color: var(--journal-muted); font-size: 1rem; }
+html[data-theme="journal"] .story-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 3rem; row-gap: 6rem; align-items: start; }
+html[data-theme="journal"] .story-grid > div { grid-column: span 6; }
+html[data-theme="journal"] .story-grid > div:nth-child(4n+1) { grid-column: 1 / span 8; }
+html[data-theme="journal"] .story-grid > div:nth-child(4n+2) { grid-column: 9 / span 4; margin-top: 6rem; }
+html[data-theme="journal"] .story-grid > div:nth-child(4n+3) { grid-column: 1 / span 5; }
+html[data-theme="journal"] .story-grid > div:nth-child(4n+4) { grid-column: 7 / span 6; margin-top: 5rem; }
+html[data-theme="journal"] .story-card { border-radius: 0; border-width: 0 0 1px; padding: 2rem; min-height: 21rem; }
+html[data-theme="journal"] .story-grid > div:first-child .story-card { padding: 3rem; min-height: 28rem; }
+html[data-theme="journal"] .story-grid > div:first-child h3 { font-size: 2.75rem; line-height: 1.15; font-weight: 400; }
+html[data-theme="journal"] .story-card h3 { font-weight: 400; }
+html[data-theme="journal"] .story-card > .absolute { display: none; }
+html[data-theme="journal"] .story-card p { -webkit-line-clamp: 5; }
+html[data-theme="journal"] :is(.reading-surface,.auth-input,.auth-submit) { border-radius: 2px; }
+html[data-theme="journal"] .reading-surface { border-width: 1px 0; background: transparent; }
+html[data-theme="journal"] footer { padding-top: 4rem; border-top: 1px solid var(--journal-line); }
+html[data-theme="journal"] footer > div { background: transparent; border: 0; border-radius: 0; max-width: 38rem; }
+html[data-theme="journal"] footer p { font-size: .8rem; }
+html[data-theme="journal"] .auth-submit { border: 1px solid var(--journal-gold); }
+@media (max-width: 767px) {
+  html[data-theme="journal"] .home-hero { margin-block: 4rem 5rem; }
+  html[data-theme="journal"] .story-grid { display: block; }
+  html[data-theme="journal"] .story-grid > div:nth-child(n) { margin: 0 0 2.5rem; }
+  html[data-theme="journal"] .story-grid > div:first-child .story-card { padding: 2rem; min-height: 23rem; }
+  html[data-theme="journal"] .story-grid > div:first-child h3 { font-size: 2rem; }
+  html[data-theme="journal"] .story-card { min-height: 17rem; }
+  html[data-theme="journal"] nav { background: var(--journal-paper); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blob { animation: none; }
+  html { scroll-behavior: auto; }
+  .touch-spring { transition: none; }
+}
+html[data-theme="journal"] .reading-surface .prose {
+  font-family: var(--font-serif); font-size: 1.125rem; line-height: 1.8;
+}

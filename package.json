@@ -7,8 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test tests/analytics.test.ts",
-    "test:integration": "tsx --test tests/integration.test.mts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:integration": "tsx --test tests/*.test.mts",
     "test:e2e": "playwright test",
     "test:migration": "node tests/migration.mjs"
   },
@@ -21,7 +21,8 @@
     "ua-parser-js": "^1.0.40",
     "zod": "^3.24.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "lucide-react": "^0.563.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
