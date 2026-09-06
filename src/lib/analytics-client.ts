@@ -1,17 +1,26 @@
-import type { DeviceHints } from "./device-info";
+import { browserBrand, type DeviceHints } from "./device-info";
 
-type HintNavigator = Navigator & { userAgentData?: { mobile?: boolean; platform?: string; getHighEntropyValues?: (hints: string[]) => Promise<DeviceHints> } };
+type HintNavigator = Navigator & { userAgentData?: { mobile?: boolean; platform?: string; brands?: { brand: string; version: string }[]; getHighEntropyValues?: (hints: string[]) => Promise<DeviceHints> } };
 let hintPromise: Promise<DeviceHints> | undefined;
+let availableHints: DeviceHints = {};
+
+export function getAvailableClientHints(): DeviceHints { return availableHints; }
 
 export function getClientHints(): Promise<DeviceHints> {
+  if (hintPromise) return hintPromise.then(() => availableHints);
   hintPromise ??= new Promise(resolve => {
     const data = (navigator as HintNavigator).userAgentData;
-    const basic = { platform: data?.platform, mobile: data?.mobile };
+    const basic = { platform: data?.platform, mobile: data?.mobile, legacyPlatform: navigator.platform, browser: browserBrand(data?.brands?.map(value => value.brand) || []) || undefined };
+    availableHints = basic;
     if (!data?.getHighEntropyValues) { resolve(basic); return; }
     // Some browsers deny or never resolve entropy requests. Tracking must proceed.
     const timer = window.setTimeout(() => resolve(basic), 200);
-    Promise.resolve().then(() => data.getHighEntropyValues!(["model"]))
-      .then(hints => resolve({ ...basic, model: hints.model }), () => resolve(basic))
+    Promise.resolve().then(() => data.getHighEntropyValues!(["model", "platform", "architecture"]))
+      .then(hints => {
+        // Retain late entropy for the next existing read-time batch as well.
+        availableHints = { ...basic, platform: hints.platform || basic.platform, model: hints.model, architecture: hints.architecture };
+        resolve(availableHints);
+      }, () => resolve(basic))
       .finally(() => window.clearTimeout(timer));
   });
   return hintPromise;

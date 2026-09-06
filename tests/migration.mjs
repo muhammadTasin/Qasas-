@@ -47,12 +47,20 @@ for (const existingGoogleAccount of [false, true]) {
         INSERT INTO "Story" (id,"authorId",title,content,"updatedAt") VALUES ('legacy-google-story','legacy-google-user','Original Google story','Original Google content',now());
       `);
     }
+    // Bring the fixture to the latest main schema before testing the new migration.
+    for (const migration of ['20260905180000_private_analytics_and_story_trash', '20260906120000_google_auth_compatibility']) cpSync(`prisma/migrations/${migration}`, join(temp, 'migrations', migration), { recursive: true });
+    execFileSync('npx', ['prisma', 'migrate', 'deploy', '--schema', join(temp, 'schema.prisma')], { env, stdio: 'pipe' });
+    sql(database, `INSERT INTO "StoryView" (id,"storyId","visitorId","isAuthenticated","lastSeenAt") VALUES ('legacy-auth-view','legacy-story','${randomUUID()}',TRUE,now())`);
     const originalGoogle = existingGoogleAccount ? sql(database, `SELECT row_to_json(a) FROM "Account" a WHERE id = 'legacy-google-link'`) : null;
     const googleUser = existingGoogleAccount ? sql(database, `SELECT row_to_json(u) FROM "User" u WHERE id = 'legacy-google-user'`) : null;
     const before = snapshot();
     const originalUser = sql(database, `SELECT json_build_array(id,email,"passwordHash","createdAt","updatedAt") FROM "User" WHERE id = 'legacy-user'`);
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], { env, stdio: 'pipe' });
     assert.equal(snapshot(), before);
+    assert.equal(sql(database, `SELECT count(*) FROM "StoryView" WHERE "userId" IS NULL AND "deviceArchitecture" IS NULL`), '2');
+    assert.equal(sql(database, `SELECT "isAuthenticated" FROM "StoryView" WHERE id = 'legacy-auth-view'`), 't');
+    assert.equal(sql(database, `SELECT count(*) FROM pg_indexes WHERE indexname IN ('StoryView_storyId_userId_lastSeenAt_idx', 'StoryView_userId_idx')`), '2');
+    assert.equal(sql(database, `SELECT confdeltype FROM pg_constraint WHERE conname = 'StoryView_userId_fkey'`), 'n');
     assert.equal(sql(database, `SELECT json_build_array(id,email,"passwordHash","createdAt","updatedAt") FROM "User" WHERE id = 'legacy-user'`), originalUser);
     assert.equal(sql(database, `SELECT count(*) FROM information_schema.columns WHERE table_name = 'User' AND column_name = 'sessionVersion'`), '0');
     assert.equal(sql(database, `SELECT count(*) FROM information_schema.tables WHERE table_name IN ('PasswordResetToken', 'PasswordResetRateLimit')`), '0');
