@@ -9,25 +9,36 @@ export function trackingMetadata(headers: Headers, hints: DeviceHints, isAuthent
 }
 export type TrackingMetadata = ReturnType<typeof trackingMetadata>;
 
-export async function recordSiteVisit(identity: VisitorIdentity, metadata: TrackingMetadata, pathname: string) {
+// userId is supplied exclusively by the server session, never the request body.
+export async function recordSiteVisit(identity: VisitorIdentity, metadata: TrackingMetadata, pathname: string, userId: string | null) {
   const where = identity.visitorId ? { visitorId: identity.visitorId } : identity.ipHash ? { ipHash: identity.ipHash } : null;
   if (!where) return;
   await prisma.$transaction(async tx => {
+    const data = { ...metadata, isAuthenticated: Boolean(userId) };
     const visitor = await tx.siteVisitor.upsert({
-      where, create: { ...identity, ...metadata }, update: { lastSeenAt: new Date() }, select: { id: true },
+      where, create: { ...identity, ...data, userId },
+      // Logout changes current metadata, but must not erase the counting link.
+      update: { lastSeenAt: new Date(), ...(userId ? { userId } : {}) }, select: { id: true },
     });
     const now = new Date();
+    if (userId) {
+      // One durable marker per User also retains people after account switching
+      // on a shared browser. Do not change User.updatedAt or guest attribution.
+      await tx.$executeRaw`UPDATE "User"
+        SET "siteLastSeenAt" = GREATEST("siteLastSeenAt", ${now.toISOString()}::timestamp(3))
+        WHERE "id" = ${userId}`;
+    }
     // An atomic database gate works across Vercel instances and browser tabs.
     const claimed = await tx.siteVisitor.updateMany({
-      where: { id: visitor.id, OR: [{ lastEventAt: null }, { lastEventAt: { lte: new Date(now.getTime() - 3000) } }, { isAuthenticated: { not: metadata.isAuthenticated } }] },
-      data: { ...metadata, lastEventAt: now },
+      where: { id: visitor.id, OR: [{ lastEventAt: null }, { lastEventAt: { lte: new Date(now.getTime() - 3000) } }, { isAuthenticated: { not: data.isAuthenticated } }] },
+      data: { ...data, lastEventAt: now },
     });
     if (claimed.count) {
       await tx.siteVisitEvent.create({
-        data: { visitorId: anonymousSuffix(identity), pathname, isAuthenticated: metadata.isAuthenticated }, select: { id: true },
+        data: { visitorId: anonymousSuffix(identity), pathname, isAuthenticated: data.isAuthenticated }, select: { id: true },
       });
     } else {
-      await tx.siteVisitor.update({ where: { id: visitor.id }, data: metadata, select: { id: true } });
+      await tx.siteVisitor.update({ where: { id: visitor.id }, data, select: { id: true } });
     }
   }, { maxWait: 2000, timeout: 4000 });
 }

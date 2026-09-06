@@ -2,6 +2,8 @@
 
 A community platform for writing and reading stories with estimated read times and interactive engagement features.
 
+Global Unique Voices uses authenticated account identities plus remaining anonymous visitors. See the [identity rules, regression results and migration operator guide](docs/global-unique-voices.md) before releasing this change.
+
 ---
 
 ## Overview

@@ -48,15 +48,44 @@ for (const existingGoogleAccount of [false, true]) {
       `);
     }
     // Bring the fixture to the latest main schema before testing the new migration.
-    for (const migration of ['20260905180000_private_analytics_and_story_trash', '20260906120000_google_auth_compatibility']) cpSync(`prisma/migrations/${migration}`, join(temp, 'migrations', migration), { recursive: true });
+    for (const migration of ['20260905180000_private_analytics_and_story_trash', '20260906120000_google_auth_compatibility', '20260906180000_story_reader_analytics']) cpSync(`prisma/migrations/${migration}`, join(temp, 'migrations', migration), { recursive: true });
     execFileSync('npx', ['prisma', 'migrate', 'deploy', '--schema', join(temp, 'schema.prisma')], { env, stdio: 'pipe' });
     sql(database, `INSERT INTO "StoryView" (id,"storyId","visitorId","isAuthenticated","lastSeenAt") VALUES ('legacy-auth-view','legacy-story','${randomUUID()}',TRUE,now())`);
     const originalGoogle = existingGoogleAccount ? sql(database, `SELECT row_to_json(a) FROM "Account" a WHERE id = 'legacy-google-link'`) : null;
     const googleUser = existingGoogleAccount ? sql(database, `SELECT row_to_json(u) FROM "User" u WHERE id = 'legacy-google-user'`) : null;
     const before = snapshot();
+    const originalVisitors = sql(database, `SELECT json_agg(row_to_json(v)) FROM "SiteVisitor" v`);
+    const originalEvents = sql(database, `SELECT json_agg(row_to_json(e)) FROM "SiteVisitEvent" e`);
     const originalUser = sql(database, `SELECT json_build_array(id,email,"passwordHash","createdAt","updatedAt") FROM "User" WHERE id = 'legacy-user'`);
+    const voicesMigration = readFileSync('prisma/migrations/20260906200000_global_unique_voices/migration.sql', 'utf8');
+    // A conflicting manually added column must abort atomically, preserving rows
+    // and rolling back the other new column. Test only this disposable fixture.
+    sql(database, `ALTER TABLE "SiteVisitor" ADD COLUMN "userId" INTEGER`);
+    assert.throws(() => sql(database, voicesMigration), /Incompatible global visitor column drift/);
+    assert.equal(sql(database, `SELECT count(*) FROM information_schema.columns WHERE table_name = 'User' AND column_name = 'siteLastSeenAt'`), '0');
+    sql(database, `ALTER TABLE "SiteVisitor" DROP COLUMN "userId"`);
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], { env, stdio: 'pipe' });
     assert.equal(snapshot(), before);
+    assert.deepEqual(JSON.parse(sql(database, `SELECT json_agg(to_jsonb(v) - 'userId') FROM "SiteVisitor" v`)), JSON.parse(originalVisitors));
+    assert.equal(sql(database, `SELECT json_agg(row_to_json(e)) FROM "SiteVisitEvent" e`), originalEvents);
+    assert.equal(sql(database, `SELECT count(*) FROM "SiteVisitor" WHERE "userId" IS NULL`), '1');
+    assert.equal(sql(database, `SELECT count(*) FROM "User" WHERE "siteLastSeenAt" IS NOT NULL`), '0');
+    assert.equal(sql(database, `SELECT count(*) FROM pg_indexes WHERE indexname IN ('User_siteLastSeenAt_idx', 'SiteVisitor_userId_lastSeenAt_idx')`), '2');
+    assert.equal(sql(database, `SELECT confdeltype FROM pg_constraint WHERE conrelid = '"SiteVisitor"'::regclass AND conname = 'SiteVisitor_userId_fkey'`), 'n');
+    // Compatible pre-existing objects and repeated SQL never duplicate anything.
+    sql(database, voicesMigration);
+    assert.equal(snapshot(), before);
+    assert.equal(sql(database, `SELECT count(*) FROM pg_constraint WHERE conrelid = '"SiteVisitor"'::regclass AND conname = 'SiteVisitor_userId_fkey'`), '1');
+    sql(database, `DROP INDEX "User_siteLastSeenAt_idx"; CREATE INDEX "User_siteLastSeenAt_idx" ON "User" (email)`);
+    assert.throws(() => sql(database, voicesMigration), /Incompatible index drift/);
+    sql(database, `DROP INDEX "User_siteLastSeenAt_idx"; CREATE INDEX "User_siteLastSeenAt_idx" ON "User" ("siteLastSeenAt")`);
+    sql(database, `ALTER INDEX "User_siteLastSeenAt_idx" RENAME TO "alternate_site_seen"`);
+    assert.throws(() => sql(database, voicesMigration), /Equivalent index/);
+    sql(database, `ALTER INDEX "alternate_site_seen" RENAME TO "User_siteLastSeenAt_idx"`);
+    sql(database, `ALTER TABLE "SiteVisitor" DROP CONSTRAINT "SiteVisitor_userId_fkey"; ALTER TABLE "SiteVisitor" ADD CONSTRAINT "SiteVisitor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"(id) ON DELETE CASCADE`);
+    assert.throws(() => sql(database, voicesMigration), /Incompatible SiteVisitor_userId_fkey/);
+    sql(database, `ALTER TABLE "SiteVisitor" DROP CONSTRAINT "SiteVisitor_userId_fkey"`);
+    sql(database, voicesMigration);
     assert.equal(sql(database, `SELECT count(*) FROM "StoryView" WHERE "userId" IS NULL AND "deviceArchitecture" IS NULL`), '2');
     assert.equal(sql(database, `SELECT "isAuthenticated" FROM "StoryView" WHERE id = 'legacy-auth-view'`), 't');
     assert.equal(sql(database, `SELECT count(*) FROM pg_indexes WHERE indexname IN ('StoryView_storyId_userId_lastSeenAt_idx', 'StoryView_userId_idx')`), '2');
@@ -67,12 +96,12 @@ for (const existingGoogleAccount of [false, true]) {
     assert.equal(sql(database, `SELECT count(*) FROM "Account"`), existingGoogleAccount ? '1' : '0');
     if (existingGoogleAccount) {
       assert.equal(sql(database, `SELECT row_to_json(a) FROM "Account" a WHERE id = 'legacy-google-link'`), originalGoogle);
-      assert.equal(sql(database, `SELECT row_to_json(u) FROM "User" u WHERE id = 'legacy-google-user'`), googleUser);
+      assert.deepEqual(JSON.parse(sql(database, `SELECT to_jsonb(u) - 'siteLastSeenAt' FROM "User" u WHERE id = 'legacy-google-user'`)), JSON.parse(googleUser));
     }
     assert.equal(sql(database, `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'User' AND column_name = 'passwordHash'`), 'YES');
     assert.equal(sql(database, `SELECT count(*) FROM "Story" WHERE "deletedAt" IS NULL AND "publishKey" IS NULL`), existingGoogleAccount ? '2' : '1');
     assert.equal(sql(database, `SELECT count(*) FROM "StoryView" WHERE "deviceModel" IS NULL AND "isAuthenticated" IS NULL`), '1');
-    console.log(`PASS: migration ${existingGoogleAccount ? 'with original Google accounts' : 'without an Account table'} preserves users, passwords, story ownership, comments, reactions and analytics; no password-reset schema is added.`);
+    console.log(`PASS: migration ${existingGoogleAccount ? 'with original Google accounts' : 'without an Account table'} preserves all existing data; NULL identity fields, defensive/idempotent SQL, indexes, foreign key and incompatible drift rollback verified.`);
   } finally {
     // Only the uniquely named temporary database created by this script is removed.
     if (created) sql('postgres', `DROP DATABASE "${database}"`);
