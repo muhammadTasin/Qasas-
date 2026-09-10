@@ -110,21 +110,27 @@ export async function reactToStoryAction(formData: FormData) {
 
 export async function addCommentAction(formData: FormData) {
   const session = await requireSession();
-  const storyId = idSchema.parse(formData.get("storyId"));
-  const body = z.string().min(1).max(1000).parse(formData.get("body"));
-  await withActiveStory(storyId, tx => tx.comment.create({
-    data: { storyId, userId: session.user.id, body }, select: { id: true },
-  }));
-  revalidatePath(`/stories/${storyId}`);
+  const storyId = idSchema.safeParse(formData.get("storyId"));
+  const body = z.string().min(1).max(1000).safeParse(formData.get("body"));
+  if (!storyId.success || !body.success) return { error: "Write a reflection of 1–1000 characters." };
+  try {
+    await withActiveStory(storyId.data, tx => tx.comment.create({
+      data: { storyId: storyId.data, userId: session.user.id, body: body.data }, select: { id: true },
+    }));
+    revalidatePath(`/stories/${storyId.data}`);
+  } catch { return { error: "Could not post your reflection. The story may no longer be available." }; }
 }
 
 export async function deleteCommentAction(formData: FormData) {
   const session = await requireSession();
-  const commentId = idSchema.parse(formData.get("commentId"));
-  const comment = await prisma.comment.findFirst({
-    where: { id: commentId, userId: session.user.id, story: { deletedAt: null } }, select: { storyId: true },
-  });
-  if (!comment) throw new Error("Unauthorized");
-  await withActiveStory(comment.storyId, tx => tx.comment.deleteMany({ where: { id: commentId, userId: session.user.id } }));
-  revalidatePath(`/stories/${comment.storyId}`);
+  const commentId = idSchema.safeParse(formData.get("commentId"));
+  if (!commentId.success) return { error: "Invalid comment." };
+  try {
+    const comment = await prisma.comment.findFirst({
+      where: { id: commentId.data, userId: session.user.id, story: { deletedAt: null } }, select: { storyId: true },
+    });
+    if (!comment) return { error: "Could not delete this reflection. Check that it is still yours." };
+    await withActiveStory(comment.storyId, tx => tx.comment.deleteMany({ where: { id: commentId.data, userId: session.user.id } }));
+    revalidatePath(`/stories/${comment.storyId}`);
+  } catch { return { error: "Could not delete this reflection. Check that it is still yours." }; }
 }

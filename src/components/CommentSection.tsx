@@ -1,7 +1,46 @@
+"use client";
+
+import { useActionState, useRef } from "react";
 import { addCommentAction, deleteCommentAction } from "@/lib/actions";
 import { Send } from "lucide-react";
 import Link from "next/link";
 import type { Comment } from "@prisma/client";
+
+type ActionResult = { error?: string } | undefined;
+
+function AddCommentForm({ storyId }: { storyId: string }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, formAction, isPending] = useActionState<ActionResult, FormData>(async (_prevState, formData) => {
+    const result = await addCommentAction(formData);
+    if (!result?.error) formRef.current?.reset();
+    return result;
+  }, undefined);
+
+  return (
+    <div className="liquid-glass rounded-3xl p-6 mb-10">
+      <form ref={formRef} action={formAction} className="relative">
+        <input type="hidden" name="storyId" value={storyId} />
+        <textarea name="body" required maxLength={1000} aria-label="Reflection" placeholder="Write a reflection..." className="w-full p-4 rounded-xl bg-white/40 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-0 outline-none transition-all resize-none h-32 text-base font-serif text-ink-800 placeholder:text-ink-400" />
+        <div className="flex justify-end items-center mt-4"><button type="submit" disabled={isPending} className="flex items-center gap-2 px-6 py-2 bg-emerald-800 text-white rounded-full hover:bg-emerald-900 disabled:opacity-50 disabled:cursor-not-allowed touch-spring shadow-lg shadow-emerald-900/10 text-sm font-bold">{isPending ? "Posting..." : "Post"}<Send size={14} /></button></div>
+        {state?.error ? <p role="alert" className="mt-2 text-sm text-rose-600">{state.error}</p> : null}
+      </form>
+    </div>
+  );
+}
+
+function DeleteCommentForm({ commentId }: { commentId: string }) {
+  const [state, formAction, isPending] = useActionState<ActionResult, FormData>(async (_prevState, formData) => {
+    return await deleteCommentAction(formData);
+  }, undefined);
+
+  return (
+    <form action={formAction} className="mt-2 text-right">
+      <input type="hidden" name="commentId" value={commentId} />
+      <button type="submit" disabled={isPending} className="text-xs text-rose-600 disabled:opacity-50 disabled:cursor-not-allowed">{isPending ? "Deleting..." : "Delete"}</button>
+      {state?.error ? <p role="alert" className="mt-1 text-xs text-rose-600">{state.error}</p> : null}
+    </form>
+  );
+}
 
 export default function CommentSection({ storyId, comments, currentUserId }: {
   storyId: string;
@@ -10,13 +49,7 @@ export default function CommentSection({ storyId, comments, currentUserId }: {
 }) {
   return <section className="max-w-[65ch] mx-auto">
     <h3 className="font-serif text-2xl text-emerald-900 mb-8 px-4 flex items-baseline gap-3">Reflections <span className="text-sm font-sans font-bold text-emerald-800/30">({comments.length})</span></h3>
-    {currentUserId ? <div className="liquid-glass rounded-3xl p-6 mb-10">
-      <form action={addCommentAction} className="relative">
-        <input type="hidden" name="storyId" value={storyId} />
-        <textarea name="body" required maxLength={1000} aria-label="Reflection" placeholder="Write a reflection..." className="w-full p-4 rounded-xl bg-white/40 border border-white/60 focus:bg-white focus:border-emerald-500 focus:ring-0 outline-none transition-all resize-none h-32 text-base font-serif text-ink-800 placeholder:text-ink-400" />
-        <div className="flex justify-end items-center mt-4"><button type="submit" className="flex items-center gap-2 px-6 py-2 bg-emerald-800 text-white rounded-full hover:bg-emerald-900 disabled:opacity-50 disabled:cursor-not-allowed touch-spring shadow-lg shadow-emerald-900/10 text-sm font-bold">Post<Send size={14} /></button></div>
-      </form>
-    </div> : <div className="liquid-glass p-8 rounded-3xl text-center mb-10 border border-dashed border-emerald-900/10">
+    {currentUserId ? <AddCommentForm storyId={storyId} /> : <div className="liquid-glass p-8 rounded-3xl text-center mb-10 border border-dashed border-emerald-900/10">
       <p className="font-serif text-ink-500 mb-3 italic">Join the circle to share your thoughts.</p><Link href="/signin" className="text-sm font-bold text-emerald-700 hover:text-emerald-900 underline decoration-2 underline-offset-4">Sign in</Link>
     </div>}
     <div className="space-y-4">
@@ -26,7 +59,7 @@ export default function CommentSection({ storyId, comments, currentUserId }: {
           <span className="text-[10px] text-ink-400 font-sans">{comment.createdAt.toLocaleDateString()}</span>
         </div>
         <p className="font-serif text-ink-700 text-base leading-relaxed">{comment.body}</p>
-        {currentUserId === comment.userId && <form action={deleteCommentAction} className="mt-2 text-right"><input type="hidden" name="commentId" value={comment.id} /><button className="text-xs text-rose-600">Delete</button></form>}
+        {currentUserId === comment.userId && <DeleteCommentForm commentId={comment.id} />}
       </div>)}
     </div>
   </section>;
