@@ -1,17 +1,18 @@
 "use client";
-import { Globe } from "lucide-react";
+import { Globe, LineChart } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { SITE_STATS_INTERVAL_MS } from "@/lib/site-stats-policy";
 type Stats = { uniqueVisitorsLifetime: number; uniqueVisitorsLast30Days: number; totalVisits: number };
 export default function SiteStatsWidget() {
   const { status, data: session } = useSession();
   // Unmount cached private data on logout or account change.
   if (status !== "authenticated" || !session?.user?.id) return null;
-  return <AuthenticatedSiteStats key={session.user.id} />;
+  return <AuthenticatedSiteStats key={session.user.id} isSiteAdmin={session.user.isSiteAdmin} />;
 }
 
-function AuthenticatedSiteStats() {
+function AuthenticatedSiteStats({ isSiteAdmin }: { isSiteAdmin: boolean }) {
   const [stats, setStats] = useState<Stats | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -42,5 +43,10 @@ function AuthenticatedSiteStats() {
     <div className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-2 text-[10px] font-bold text-emerald-800 uppercase tracking-widest">
       <Globe size={10} /><span>{new Intl.NumberFormat("en-US").format(stats.uniqueVisitorsLifetime)} Unique Voices</span>
     </div>
+    {isSiteAdmin && (
+      <Link href="/site-insights" className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-2 text-[10px] font-bold text-emerald-800 uppercase tracking-widest hover:bg-emerald-100 transition-colors">
+        <LineChart size={10} aria-hidden="true" /><span>Site Insights</span>
+      </Link>
+    )}
   </div>;
 }

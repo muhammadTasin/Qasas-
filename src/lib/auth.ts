@@ -5,6 +5,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "./prisma";
+import { isAdminEmail } from "./site-admin";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -67,6 +68,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
+        session.user.isSiteAdmin = isAdminEmail(token.email);
       }
       return session;
     },
