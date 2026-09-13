@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { getArchitecture, getVisitorIdentity } from "./analytics";
+import { getArchitecture, getVisitorIdentity, isLikelyBot } from "./analytics";
 import { getSession } from "./session";
 import { trackingMetadata } from "./tracking";
 import { StoryUnavailableError } from "./story-mutations";
@@ -51,6 +51,7 @@ export async function readTrackingBody(request: Request): Promise<unknown> {
 }
 
 export async function trackingContext(request: Request, hints: z.infer<typeof hintsSchema>, scope: string) {
+  if (isLikelyBot(request.headers)) return null;
   const identity = getVisitorIdentity(request.headers);
   if (!identity.visitorId && !identity.ipHash) return null;
   const session = await getSession();

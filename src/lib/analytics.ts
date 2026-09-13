@@ -13,6 +13,11 @@ export function analyticsSecret(): string {
   return salt;
 }
 
+const BOT_UA_PATTERN = /bot|crawl|spider|headless|puppeteer|playwright|selenium|phantomjs|lighthouse|pingdom|uptimerobot|facebookexternalhit|whatsapp|telegrambot|discordbot|slackbot|embedly/i;
+export function isLikelyBot(headers: Headers): boolean {
+  return BOT_UA_PATTERN.test(headers.get("user-agent") || "");
+}
+
 export function getVisitorIdFromHeaders(headers: Headers): string | null {
   const value = headers.get("cookie")?.split(";").map(part => part.trim()).find(part => part.startsWith("visitorId="))?.slice(10);
   if (!value) return null;
