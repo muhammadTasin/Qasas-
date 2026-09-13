@@ -15,6 +15,7 @@ type ReaderRow = {
   deviceModel: string | null; devicePlatform: string | null; deviceArchitecture: string | null;
   deviceType: string | null; os: string | null; browser: string | null;
   country: string | null; region: string | null; city: string | null;
+  latitude: number | null; longitude: number | null; locationAccuracyM: number | null;
   kind: ReaderKind; category: DeviceCategory; readerName: string | null;
   readerReadSeconds: bigint; readerFirstSeenAt: Date; lastSeenAt: Date;
 };
@@ -63,7 +64,8 @@ export async function getStoryInsights(storyId: string, ownerId: string) {
       tx.$queryRaw<ReaderRow[]>(Prisma.sql`${query}, lists AS (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY kind ORDER BY "lastSeenAt" DESC, id DESC) AS "listRank" FROM readers
       ) SELECT l.id, l."visitorId", l."ipHash", l."deviceModel", l."devicePlatform", l."deviceArchitecture",
-          l."deviceType", l.os, l.browser, l.country, l.region, l.city, l.kind, l.category,
+          l."deviceType", l.os, l.browser, l.country, l.region, l.city,
+          l.latitude, l.longitude, l."locationAccuracyM", l.kind, l.category,
           l."readerReadSeconds", l."readerFirstSeenAt", l."lastSeenAt", u.name AS "readerName"
         FROM lists l LEFT JOIN "User" u ON u.id = l."userId" AND l.kind = 'Logged in'
         WHERE l."listRank" <= ${RECENT_READERS_PER_KIND}
@@ -84,7 +86,11 @@ export async function getStoryInsights(storyId: string, ownerId: string) {
       visitorLabel: visitorLabel(view), deviceModel: deviceLabel(view),
       deviceCategory: view.category, deviceType: view.deviceType,
       architecture: view.deviceArchitecture, os: view.os, browser: view.browser,
-      approximateLocation: approximateLocation(view), visitorKind: view.kind,
+      approximateLocation: approximateLocation(view),
+      preciseLocation: view.latitude != null && view.longitude != null
+        ? { latitude: view.latitude, longitude: view.longitude, accuracyMeters: view.locationAccuracyM }
+        : null,
+      visitorKind: view.kind,
       totalReadSeconds: Number(view.readerReadSeconds),
       firstSeenAt: view.readerFirstSeenAt.toISOString(), lastSeenAt: view.lastSeenAt.toISOString(),
     }));

@@ -9,8 +9,11 @@ export function trackingMetadata(headers: Headers, hints: DeviceHints, isAuthent
 }
 export type TrackingMetadata = ReturnType<typeof trackingMetadata>;
 
+// Opt-in browser geolocation, forwarded from the initial tracking call only.
+type Coords = { latitude: number; longitude: number; accuracy?: number };
+
 // userId is supplied exclusively by the server session, never the request body.
-export async function recordSiteVisit(identity: VisitorIdentity, metadata: TrackingMetadata, pathname: string, userId: string | null) {
+export async function recordSiteVisit(identity: VisitorIdentity, metadata: TrackingMetadata, pathname: string, userId: string | null, coords?: Coords) {
   const where = identity.visitorId ? { visitorId: identity.visitorId } : identity.ipHash ? { ipHash: identity.ipHash } : null;
   if (!where) return;
   await prisma.$transaction(async tx => {
@@ -40,10 +43,20 @@ export async function recordSiteVisit(identity: VisitorIdentity, metadata: Track
     } else {
       await tx.siteVisitor.update({ where: { id: visitor.id }, data, select: { id: true } });
     }
+    // Written separately from `data` (rewritten on every visit): a precise fix
+    // is usually absent (denied, timed out, or simply not requested), and
+    // folding it in would silently erase a previously captured one.
+    if (coords) {
+      await tx.siteVisitor.update({
+        where: { id: visitor.id },
+        data: { latitude: coords.latitude, longitude: coords.longitude, locationAccuracyM: coords.accuracy != null ? Math.round(coords.accuracy) : undefined },
+        select: { id: true },
+      });
+    }
   }, { maxWait: 2000, timeout: 4000 });
 }
 
-export async function recordStoryActivity(storyId: string, identity: VisitorIdentity, metadata: TrackingMetadata, reader: { userId: string | null; deviceArchitecture?: string | null }, seconds = 0) {
+export async function recordStoryActivity(storyId: string, identity: VisitorIdentity, metadata: TrackingMetadata, reader: { userId: string | null; deviceArchitecture?: string | null }, seconds = 0, coords?: Coords) {
   const where = identity.visitorId ? { storyId_visitorId: { storyId, visitorId: identity.visitorId } }
     : identity.ipHash ? { storyId_ipHash: { storyId, ipHash: identity.ipHash } } : null;
   if (!where) return;
@@ -57,6 +70,15 @@ export async function recordStoryActivity(storyId: string, identity: VisitorIden
     // entropy hints must not downgrade a previously exposed exact model.
     const model = preferredModel(metadata.deviceModel, view.deviceModel);
     if (model !== view.deviceModel) await tx.storyView.update({ where: { id: view.id }, data: { deviceModel: model } });
+    // Written separately from `data` for the same reason as recordSiteVisit:
+    // most calls (every readtime flush) never carry coords at all.
+    if (coords) {
+      await tx.storyView.update({
+        where: { id: view.id },
+        data: { latitude: coords.latitude, longitude: coords.longitude, locationAccuracyM: coords.accuracy != null ? Math.round(coords.accuracy) : undefined },
+        select: { id: true },
+      });
+    }
     if (!seconds) return;
     const now = new Date();
     const acceptedSeconds = Math.min(seconds, view.lastReadAt ? Math.floor((now.getTime() - view.lastReadAt.getTime()) / 1000) : seconds);

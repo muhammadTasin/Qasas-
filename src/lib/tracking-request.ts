@@ -7,7 +7,12 @@ import { StoryUnavailableError } from "./story-mutations";
 
 const textHint = z.string().max(128).optional();
 export const hintsSchema = z.object({ model: textHint, platform: textHint, mobile: z.boolean().optional(), architecture: textHint, browser: textHint, legacyPlatform: textHint }).optional();
-export const activitySchema = z.object({ hints: hintsSchema });
+const coordsSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).max(50000).optional(),
+}).optional();
+export const activitySchema = z.object({ hints: hintsSchema, coords: coordsSchema });
 export const readTimeSchema = activitySchema.extend({ seconds: z.number().int().min(1).max(30) });
 export const siteVisitSchema = activitySchema.extend({ pathname: z.string().min(1).max(256).transform(path => path.split(/[?#]/)[0]).refine(path => /^\/(?:$|about$|signin$|signup$|me$|write$|stories\/[a-zA-Z0-9_-]+(?:\/(?:edit|insights))?$)/.test(path)) });
 

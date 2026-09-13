@@ -96,14 +96,25 @@ export default function SiteInsightsPanel({ data, onClose, returnFocusRef }: { d
                   </p>
                   <p className="text-xs text-ink-500">Visits in window: {view.visitsInWindow}</p>
                   <p className="text-xs text-ink-500 break-words">Approximate location: {view.approximateLocation}</p>
-                  <p className="text-xs text-ink-400">Last seen: <time dateTime={view.lastSeenAt}>{new Date(view.lastSeenAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></p>
+                  {view.preciseLocation && (
+                    <p className="text-xs text-emerald-700">
+                      <a
+                        href={`https://www.google.com/maps?q=${view.preciseLocation.latitude},${view.preciseLocation.longitude}`}
+                        target="_blank" rel="noopener noreferrer" className="underline"
+                      >
+                        Exact location: {view.preciseLocation.latitude.toFixed(5)}, {view.preciseLocation.longitude.toFixed(5)}
+                        {view.preciseLocation.accuracyMeters != null ? ` (±${view.preciseLocation.accuracyMeters}m)` : ""}
+                      </a>
+                    </p>
+                  )}
+                  <p className="text-xs text-ink-400">Last seen: <time dateTime={view.lastSeenAt}>{new Date(view.lastSeenAt).toLocaleString('en-US', { timeZone: 'Asia/Dhaka', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></p>
                 </article>)}
                 {section.count > views.length && <p className="text-xs text-ink-500">Showing the {views.length} most recent of {section.count} devices. Totals include everyone.</p>}
               </section>;
             })}
 
             <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl text-[11px] text-blue-800/80 leading-relaxed space-y-2">
-              <p>Location is approximate and based on network information. VPNs, carriers and ISP routing may affect accuracy. GPS is never requested.</p>
+              <p>Location is approximate and based on network information unless a visitor granted their browser&apos;s location permission, in which case an exact coordinate is shown. VPNs, carriers and ISP routing may affect approximate accuracy.</p>
               <p>Visible only to the site owner. Device details are browser-reported, not independently verified. Each device reflects its latest observed state over the last {data.windowHours} hours.</p>
             </div>
 

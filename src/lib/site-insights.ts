@@ -11,6 +11,7 @@ type VisitorRow = {
   deviceModel: string | null; devicePlatform: string | null;
   deviceType: string | null; os: string | null; browser: string | null;
   country: string | null; region: string | null; city: string | null;
+  latitude: number | null; longitude: number | null; locationAccuracyM: number | null;
   kind: VisitKind; category: DeviceCategory; displayName: string | null;
   firstSeenAt: Date; lastSeenAt: Date;
 };
@@ -52,7 +53,8 @@ export async function getSiteInsights() {
       tx.$queryRaw<VisitorRow[]>(Prisma.sql`${query}, lists AS (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY kind ORDER BY "lastSeenAt" DESC, id DESC) AS "listRank" FROM visitors
       ) SELECT l.id, l."visitorId", l."ipHash", l."deviceModel", l."devicePlatform",
-          l."deviceType", l.os, l.browser, l.country, l.region, l.city, l.kind, l.category,
+          l."deviceType", l.os, l.browser, l.country, l.region, l.city,
+          l.latitude, l.longitude, l."locationAccuracyM", l.kind, l.category,
           l."firstSeenAt", l."lastSeenAt", u.name AS "displayName"
         FROM lists l LEFT JOIN "User" u ON u.id = l."userId" AND l."isAuthenticated" IS TRUE
         WHERE l."listRank" <= ${RECENT_VISITORS_PER_KIND}
@@ -94,6 +96,9 @@ export async function getSiteInsights() {
       os: row.os,
       browser: row.browser,
       approximateLocation: approximateLocation(row),
+      preciseLocation: row.latitude != null && row.longitude != null
+        ? { latitude: row.latitude, longitude: row.longitude, accuracyMeters: row.locationAccuracyM }
+        : null,
       visitsInWindow: visitsByLabel.get(label) ?? 0,
       firstSeenAt: row.firstSeenAt.toISOString(),
       lastSeenAt: row.lastSeenAt.toISOString(),

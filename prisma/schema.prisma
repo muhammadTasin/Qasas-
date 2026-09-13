@@ -15,18 +15,18 @@ enum ReactionType {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String?
-  accounts Account[]
-  name         String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  stories      Story[]
-  reactions    Reaction[]
-  comments     Comment[]
-  storyViews   StoryView[]
-  siteVisitors SiteVisitor[]
+  id             String        @id @default(cuid())
+  email          String        @unique
+  passwordHash   String?
+  accounts       Account[]
+  name           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  stories        Story[]
+  reactions      Reaction[]
+  comments       Comment[]
+  storyViews     StoryView[]
+  siteVisitors   SiteVisitor[]
   // Last server-authenticated site visit, retained across browser/account switches.
   siteLastSeenAt DateTime?
 
@@ -34,17 +34,17 @@ model User {
 }
 
 model Story {
-  id               String      @id @default(cuid())
+  id               String         @id @default(cuid())
   authorId         String
   title            String
   content          String
-  totalReadSeconds Int         @default(0)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  totalReadSeconds Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
-  publishKey       String?     @unique
-  currentVersion   Int         @default(1)
-  author           User        @relation(fields: [authorId], references: [id])
+  publishKey       String?        @unique
+  currentVersion   Int            @default(1)
+  author           User           @relation(fields: [authorId], references: [id])
   reactions        Reaction[]
   comments         Comment[]
   views            StoryView[]
@@ -95,28 +95,31 @@ model Comment {
 }
 
 model StoryView {
-  id               String   @id @default(cuid())
-  storyId          String
-  userId           String?
-  visitorId        String?
-  ipHash           String?
-  userAgent        String?
-  deviceType       String?
-  deviceModel      String?
-  devicePlatform   String?
+  id                 String    @id @default(cuid())
+  storyId            String
+  userId             String?
+  visitorId          String?
+  ipHash             String?
+  userAgent          String?
+  deviceType         String?
+  deviceModel        String?
+  devicePlatform     String?
   deviceArchitecture String?
-  isAuthenticated  Boolean?
-  os               String?
-  browser          String?
-  country          String?
-  region           String?
-  city             String?
-  firstSeenAt      DateTime @default(now())
-  lastSeenAt       DateTime @updatedAt
-  totalReadSeconds Int      @default(0)
-  lastReadAt       DateTime?
-  story            Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isAuthenticated    Boolean?
+  os                 String?
+  browser            String?
+  country            String?
+  region             String?
+  city               String?
+  latitude           Float?
+  longitude          Float?
+  locationAccuracyM  Int?
+  firstSeenAt        DateTime  @default(now())
+  lastSeenAt         DateTime  @updatedAt
+  totalReadSeconds   Int       @default(0)
+  lastReadAt         DateTime?
+  story              Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user               User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([storyId, visitorId])
   @@unique([storyId, ipHash])
@@ -128,25 +131,28 @@ model StoryView {
 }
 
 model SiteVisitor {
-  id          String   @id @default(cuid())
+  id                String    @id @default(cuid())
   // Last authenticated account for counting only; retained after logout.
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  visitorId   String?
-  ipHash      String?
-  userAgent   String?
-  deviceType  String?
-  deviceModel     String?
-  devicePlatform  String?
-  isAuthenticated Boolean?
-  os          String?
-  browser     String?
-  country     String?
-  region      String?
-  city        String?
-  firstSeenAt DateTime @default(now())
-  lastSeenAt  DateTime @updatedAt
-  lastEventAt     DateTime?
+  userId            String?
+  user              User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitorId         String?
+  ipHash            String?
+  userAgent         String?
+  deviceType        String?
+  deviceModel       String?
+  devicePlatform    String?
+  isAuthenticated   Boolean?
+  os                String?
+  browser           String?
+  country           String?
+  region            String?
+  city              String?
+  latitude          Float?
+  longitude         Float?
+  locationAccuracyM Int?
+  firstSeenAt       DateTime  @default(now())
+  lastSeenAt        DateTime  @updatedAt
+  lastEventAt       DateTime?
 
   @@unique([visitorId])
   @@unique([ipHash])
@@ -156,12 +162,12 @@ model SiteVisitor {
 }
 
 model SiteVisitEvent {
-  id        String   @id @default(cuid())
-  visitorId String?
-  ipHash    String?
+  id              String   @id @default(cuid())
+  visitorId       String?
+  ipHash          String?
   pathname        String?
   isAuthenticated Boolean?
-  createdAt DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   @@index([createdAt])
 }

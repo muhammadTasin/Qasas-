@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { getAvailableClientHints, getClientHints, recentlyTracked, sendAnalytics } from "@/lib/analytics-client";
+import { getAvailableClientHints, getClientHints, getPreciseCoords, recentlyTracked, sendAnalytics } from "@/lib/analytics-client";
 import type { DeviceHints } from "@/lib/device-info";
 
 const SEND_INTERVAL_SECONDS = 15;
@@ -13,9 +13,9 @@ export default function StoryEngagementTracker({ storyId }: { storyId: string })
   useEffect(() => {
     if (status === "loading") return;
     let cancelled = false;
-    void getClientHints().then(hints => {
+    void Promise.all([getClientHints(), getPreciseCoords()]).then(([hints, coords]) => {
       if (cancelled || recentlyTracked(`story:${storyId}:${status}`)) return;
-      sendAnalytics(`/api/stories/${storyId}/view`, { hints });
+      sendAnalytics(`/api/stories/${storyId}/view`, { hints, ...(coords ? { coords } : {}) });
     });
     return () => { cancelled = true; };
   }, [storyId, status]);
