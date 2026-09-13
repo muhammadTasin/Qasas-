@@ -44,20 +44,28 @@ export function sendAnalytics(url: string, body: object, beacon = false) {
 
 export type PreciseCoords = { latitude: number; longitude: number; accuracy?: number };
 
+let coordsPromise: Promise<PreciseCoords | null> | undefined;
+
 // Always shows the browser's own native permission prompt; never silent, by
 // design. A denial, timeout or unsupported context all fall back to null so
-// callers can keep using IP-based location with no regression.
+// callers can keep using IP-based location with no regression. Memoized like
+// getClientHints so SiteVisitTracker and StoryEngagementTracker share a
+// single attempt per page load, not one per route change; the request is
+// also delayed briefly so it doesn't fire the instant the page paints.
 export function getPreciseCoords(timeoutMs = 8000): Promise<PreciseCoords | null> {
-  return new Promise(resolve => {
+  coordsPromise ??= new Promise(resolve => {
     if (!("geolocation" in navigator) || !window.isSecureContext) { resolve(null); return; }
-    const timer = window.setTimeout(() => resolve(null), timeoutMs);
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        window.clearTimeout(timer);
-        resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: Math.round(position.coords.accuracy) });
-      },
-      () => { window.clearTimeout(timer); resolve(null); },
-      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 5 * 60 * 1000 },
-    );
+    window.setTimeout(() => {
+      const timer = window.setTimeout(() => resolve(null), timeoutMs);
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          window.clearTimeout(timer);
+          resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: Math.round(position.coords.accuracy) });
+        },
+        () => { window.clearTimeout(timer); resolve(null); },
+        { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 5 * 60 * 1000 },
+      );
+    }, 3000);
   });
+  return coordsPromise;
 }
